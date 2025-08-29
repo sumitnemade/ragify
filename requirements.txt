@@ -1,0 +1,53 @@
+# Core dependencies for Ragify plugin
+pydantic>=2.0.0
+numpy>=1.21.0
+scikit-learn>=1.0.0
+sentence-transformers>=2.2.0
+pandas>=1.5.0
+python-dotenv>=0.19.0
+structlog>=23.0.0
+tenacity>=8.0.0
+pydantic-settings>=2.0.0
+
+# Database and storage dependencies
+sqlalchemy[asyncio]>=2.0.0
+redis>=4.5.0
+asyncpg>=0.28.0
+aiomysql>=0.1.1
+aiosqlite>=0.19.0
+psycopg2-binary>=2.9.0
+pymongo>=4.3.0
+
+# HTTP and API dependencies
+aiohttp>=3.8.0
+httpx>=0.24.0
+
+# Vector database dependencies
+chromadb>=0.4.0
+faiss-cpu>=1.7.0
+pinecone>=3.0.0
+weaviate-client>=3.25.0
+
+# Document processing dependencies
+PyPDF2>=3.0.0
+python-docx>=0.8.11
+docx2txt>=0.8
+pdfplumber>=0.9.0
+
+# Real-time synchronization dependencies
+websockets>=11.0.0
+aiofiles>=23.0.0
+asyncio-mqtt>=0.16.0
+kafka-python>=2.0.0
+
+# Statistical analysis dependencies
+scipy>=1.9.0
+statsmodels>=0.13.0
+
+# Cache management dependencies
+aiomcache>=0.7.0
+cachetools>=5.0.0
+
+# Privacy and security dependencies
+cryptography>=41.0.0
+bcrypt>=4.0.0

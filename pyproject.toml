@@ -1,0 +1,106 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ragify"
+version = "0.1.0"
+description = "Context Orchestration Framework for LLM Applications - Intelligent Multi-Source Context Fusion"
+readme = "README.md"
+keywords = ["llm", "rag", "context", "orchestration", "ai", "nlp", "framework", "prototype", "async"]
+license = {text = "MIT"}
+authors = [
+    {name = "Sumit Nemade", email = "nemadesumit@gmail.com"}
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Text Processing :: Linguistic",
+    "Topic :: Database :: Database Engines/Servers",
+    "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
+    "Topic :: System :: Distributed Computing",
+]
+requires-python = ">=3.8,<4.0"
+dependencies = [
+    "redis>=4.5.0",
+    "sqlalchemy>=2.0.0",
+    "pydantic>=2.0.0",
+    "asyncio>=3.4.3",
+    "aiohttp>=3.8.0",
+    "numpy>=1.21.0",
+    "scikit-learn>=1.0.0",
+    "sentence-transformers>=2.2.0",
+    "chromadb>=0.4.0",
+    "faiss-cpu>=1.7.0",
+    "pandas>=1.5.0",
+    "python-dotenv>=0.19.0",
+    "structlog>=23.0.0",
+    "tenacity>=8.0.0",
+    "pydantic-settings>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "flake8>=6.0.0",
+    "mypy>=1.0.0",
+    "pre-commit>=3.0.0",
+]
+docs = [
+    "sphinx>=6.0.0",
+    "sphinx-rtd-theme>=1.2.0",
+    "myst-parser>=1.0.0",
+]
+enterprise = [
+    "postgresql>=3.0.0",
+    "elasticsearch>=8.0.0",
+    "kafka-python>=2.0.0",
+    "celery>=5.3.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/sumitnemade/ragify"
+Documentation = "https://ragify.readthedocs.io"
+Repository = "https://github.com/sumitnemade/ragify"
+Issues = "https://github.com/sumitnemade/ragify/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 88
+target-version = ['py38']
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "--cov=ragify --cov-report=html --cov-report=term-missing"
+asyncio_mode = "auto"

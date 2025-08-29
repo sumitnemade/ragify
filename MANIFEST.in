@@ -1,0 +1,22 @@
+include README.md
+include LICENSE
+include CONTRIBUTING.md
+include ARCHITECTURE_SUMMARY.md
+include pyproject.toml
+
+recursive-include docs *.md *.rst *.txt
+recursive-include examples *.py *.md *.txt
+
+recursive-exclude * __pycache__
+recursive-exclude * *.py[co]
+recursive-exclude * *.so
+recursive-exclude * .DS_Store
+# Git-related exclusions removed
+recursive-exclude * .pytest_cache
+recursive-exclude * .coverage
+recursive-exclude * htmlcov
+recursive-exclude * .mypy_cache
+recursive-exclude * .tox
+recursive-exclude * venv
+recursive-exclude * .venv
+recursive-exclude * .env

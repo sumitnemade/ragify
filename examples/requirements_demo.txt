@@ -1,0 +1,5 @@
+# Demo dependencies for real-world sample project
+rich>=13.0.0
+aiohttp>=3.8.0
+structlog>=23.0.0
+sqlite3  # Built-in with Python
