@@ -158,18 +158,42 @@ class DocumentSource(BaseDataSource):
             self.logger.warning(f"Source path does not exist: {self.url}")
             return documents
         
-        if source_path.is_file():
-            # Single file
-            content = await self._load_single_document(source_path)
-            if content:
-                documents.append((str(source_path), content))
-        else:
-            # Directory - scan for supported files
-            for file_path in source_path.rglob("*"):
-                if file_path.is_file() and file_path.suffix.lower() in self.supported_formats:
-                    content = await self._load_single_document(file_path)
-                    if content:
-                        documents.append((str(file_path), content))
+        try:
+            if source_path.is_file():
+                # Single file
+                content = await asyncio.wait_for(
+                    self._load_single_document(source_path), 
+                    timeout=15.0
+                )
+                if content:
+                    documents.append((str(source_path), content))
+            else:
+                # Directory - scan for supported files with limit
+                file_count = 0
+                max_files = 50  # Limit to prevent processing too many files
+                
+                for file_path in source_path.rglob("*"):
+                    if file_count >= max_files:
+                        self.logger.warning(f"Reached maximum file limit ({max_files}), stopping")
+                        break
+                        
+                    if file_path.is_file() and file_path.suffix.lower() in self.supported_formats:
+                        try:
+                            content = await asyncio.wait_for(
+                                self._load_single_document(file_path), 
+                                timeout=15.0
+                            )
+                            if content:
+                                documents.append((str(file_path), content))
+                                file_count += 1
+                        except asyncio.TimeoutError:
+                            self.logger.warning(f"Loading timed out for file: {file_path}")
+                            continue
+                        except Exception as e:
+                            self.logger.warning(f"Failed to load file {file_path}: {e}")
+                            continue
+        except Exception as e:
+            self.logger.error(f"Error loading documents: {e}")
         
         return documents
     
@@ -338,18 +362,29 @@ class DocumentSource(BaseDataSource):
         
         # Simple chunking by character count
         start = 0
-        while start < len(content):
+        max_iterations = len(content) // max(1, self.chunk_size - self.overlap) + 10  # Safety limit
+        iteration_count = 0
+        
+        while start < len(content) and iteration_count < max_iterations:
+            iteration_count += 1
             end = start + self.chunk_size
             
             # Try to break at sentence boundary
             if end < len(content):
-                # Look for sentence ending
-                for i in range(end, max(start, end - 100), -1):
-                    if content[i] in '.!?':
+                # Look for sentence ending within reasonable bounds
+                search_start = max(start, end - 100)
+                search_end = min(end, len(content))
+                
+                # Find sentence boundary
+                for i in range(search_end - 1, search_start - 1, -1):
+                    if i < len(content) and content[i] in '.!?':
                         end = i + 1
                         break
             
+            # Ensure we don't exceed content length
+            end = min(end, len(content))
             chunk_content = content[start:end].strip()
+            
             if chunk_content:
                 chunk = await self._create_chunk(
                     content=chunk_content,
@@ -363,9 +398,22 @@ class DocumentSource(BaseDataSource):
                 )
                 chunks.append(chunk)
             
-            start = end - self.overlap
+            # Move to next chunk with overlap
+            new_start = end - self.overlap
+            
+            # Prevent infinite loop - ensure we always advance
+            if new_start <= start:
+                self.logger.warning(f"Chunking would not advance, forcing advance. start={start}, new_start={new_start}")
+                new_start = start + 1
+            
+            start = new_start
+            
+            # Additional safety check
             if start >= len(content):
                 break
+        
+        if iteration_count >= max_iterations:
+            self.logger.warning(f"Chunking reached maximum iterations ({max_iterations}) for document {doc_path}")
         
         return chunks
     

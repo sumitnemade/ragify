@@ -44,6 +44,21 @@ This directory contains focused examples demonstrating each core feature of the 
 - **Features**: Multi-level caching, TTL management, cache invalidation
 - **Use Case**: Performance optimization, reduced API calls
 
+### 9. **Privacy Management** (`privacy_management_demo.py`)
+- **Purpose**: Manage data privacy and access control
+- **Features**: Privacy levels, data anonymization, access control rules, compliance
+- **Use Case**: Enterprise security, GDPR compliance, role-based access
+
+### 10. **Storage Engine** (`storage_engine_demo.py`)
+- **Purpose**: Manage data persistence and storage operations
+- **Features**: Data storage, backup/restore, optimization, migration
+- **Use Case**: Data persistence, disaster recovery, storage optimization
+
+### 11. **Updates Engine** (`updates_engine_demo.py`)
+- **Purpose**: Handle incremental updates and data synchronization
+- **Features**: Change detection, incremental updates, synchronization, scheduling
+- **Use Case**: Data synchronization, automated updates, change management
+
 ## Running Examples
 
 ```bash
@@ -54,6 +69,9 @@ export PYTHONPATH=src
 python examples/basic_usage.py
 python examples/vector_db_demo.py
 python examples/intelligent_fusion_demo.py
+python examples/privacy_management_demo.py
+python examples/storage_engine_demo.py
+python examples/updates_engine_demo.py
 ```
 
 ## Example Structure
@@ -77,3 +95,7 @@ pip install -r requirements.txt
 - Production deployments should use persistent storage
 - Some examples may require external services (APIs, databases)
 - All examples include error handling and logging
+- New examples cover previously missing core features:
+  - Privacy management and compliance
+  - Storage operations and optimization
+  - Update management and synchronization

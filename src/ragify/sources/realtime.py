@@ -12,8 +12,26 @@ import structlog
 # Real-time synchronization imports
 import websockets
 import aiofiles
-from asyncio_mqtt import Client as MqttClient
-from kafka import KafkaConsumer, KafkaProducer
+
+# Optional MQTT support
+try:
+    from aiomqtt import Client as MqttClient
+    from aiomqtt.exceptions import MqttError
+    MQTT_AVAILABLE = True
+except ImportError:
+    MqttClient = None
+    MqttError = Exception
+    MQTT_AVAILABLE = False
+
+# Optional Kafka support
+try:
+    from kafka import KafkaConsumer, KafkaProducer
+    KAFKA_AVAILABLE = True
+except ImportError:
+    KafkaConsumer = None
+    KafkaProducer = None
+    KAFKA_AVAILABLE = False
+
 import redis.asyncio as redis
 
 from .base import BaseDataSource
@@ -601,6 +619,9 @@ class RealtimeSource(BaseDataSource):
         """Connect to MQTT broker."""
         try:
             config = self.connection_config['mqtt']
+            if not MQTT_AVAILABLE:
+                raise ImportError("aiomqtt is not installed. Please install it to use MQTT.")
+            
             self.connection = MqttClient(
                 hostname=self.url.split('://')[1].split(':')[0],
                 port=int(self.url.split(':')[-1]) if ':' in self.url else 1883,
@@ -628,6 +649,8 @@ class RealtimeSource(BaseDataSource):
         """Connect to Kafka cluster."""
         try:
             config = self.connection_config['kafka']
+            if not KAFKA_AVAILABLE:
+                raise ImportError("kafka-python is not installed. Please install it to use Kafka.")
             
             # Create consumer
             self.connection = KafkaConsumer(
@@ -712,6 +735,10 @@ class RealtimeSource(BaseDataSource):
     async def _mqtt_listener(self) -> None:
         """Listen for MQTT messages."""
         try:
+            if not MQTT_AVAILABLE:
+                self.logger.warning("MQTT is not available, cannot listen for messages.")
+                return
+
             async with self.connection.messages() as messages:
                 async for message in messages:
                     try:
@@ -749,6 +776,8 @@ class RealtimeSource(BaseDataSource):
                 await self._connect()
             
             if self.connection_type == 'mqtt':
+                if not MQTT_AVAILABLE:
+                    raise ImportError("aiomqtt is not installed. Cannot publish to MQTT.")
                 await self.connection.publish(topic, json.dumps(message))
             elif self.connection_type == 'redis':
                 await self.connection.publish(topic, json.dumps(message))

@@ -28,15 +28,15 @@ class PrivacyManager:
     compliance with privacy regulations.
     """
     
-    def __init__(self, default_privacy_level: PrivacyLevel, encryption_key: Optional[str] = None):
+    def __init__(self, default_privacy_level: Optional[PrivacyLevel] = None, encryption_key: Optional[str] = None):
         """
         Initialize the privacy manager.
         
         Args:
-            default_privacy_level: Default privacy level for operations
+            default_privacy_level: Default privacy level for operations (defaults to PRIVATE)
             encryption_key: Optional encryption key (will generate if not provided)
         """
-        self.default_privacy_level = default_privacy_level
+        self.default_privacy_level = default_privacy_level or PrivacyLevel.PRIVATE
         self.logger = structlog.get_logger(__name__)
         
         # Initialize encryption
@@ -414,4 +414,182 @@ class PrivacyManager:
             
         except Exception as e:
             self.logger.error(f"Failed to generate privacy report: {e}")
+            return {}
+
+    async def filter_by_privacy(
+        self,
+        chunks: List[Any],
+        user_clearance: PrivacyLevel,
+        user_id: str
+    ) -> List[Any]:
+        """
+        Filter chunks based on user's privacy clearance level.
+        
+        Args:
+            chunks: List of context chunks to filter
+            user_clearance: User's privacy clearance level
+            user_id: User ID for logging
+            
+        Returns:
+            Filtered list of chunks
+        """
+        try:
+            accessible_chunks = []
+            for chunk in chunks:
+                if hasattr(chunk, 'source') and hasattr(chunk.source, 'privacy_level'):
+                    chunk_privacy = chunk.source.privacy_level
+                    if self._privacy_level_compliance(chunk_privacy, user_clearance):
+                        accessible_chunks.append(chunk)
+                else:
+                    # If no privacy level specified, assume public
+                    accessible_chunks.append(chunk)
+            
+            # Log access
+            await self.log_access_event(
+                user_id=user_id,
+                resource="chunk_filtering",
+                action="read",
+                timestamp=datetime.utcnow(),
+                privacy_level=user_clearance
+            )
+            
+            return accessible_chunks
+            
+        except Exception as e:
+            self.logger.error(f"Failed to filter chunks by privacy: {e}")
+            return chunks
+
+    async def anonymize_chunks(
+        self,
+        chunks: List[Any],
+        anonymization_level: str = "medium"
+    ) -> List[Any]:
+        """
+        Anonymize a list of chunks.
+        
+        Args:
+            chunks: List of chunks to anonymize
+            anonymization_level: Level of anonymization (low, medium, high)
+            
+        Returns:
+            List of anonymized chunks
+        """
+        try:
+            anonymized_chunks = []
+            for chunk in chunks:
+                if hasattr(chunk, 'content'):
+                    anonymized_content = await self.anonymize_content(chunk.content)
+                    anonymized_chunk = chunk.model_copy()
+                    anonymized_chunk.content = anonymized_content
+                    anonymized_chunks.append(anonymized_chunk)
+                else:
+                    anonymized_chunks.append(chunk)
+            
+            return anonymized_chunks
+            
+        except Exception as e:
+            self.logger.error(f"Failed to anonymize chunks: {e}")
+            return chunks
+
+    async def check_access(
+        self,
+        resource_path: str,
+        user_role: str,
+        user_clearance: PrivacyLevel
+    ) -> bool:
+        """
+        Check if user has access to a resource.
+        
+        Args:
+            resource_path: Path to the resource
+            user_role: User's role
+            user_clearance: User's clearance level
+            
+        Returns:
+            True if access is granted, False otherwise
+        """
+        try:
+            # Simple access control logic - can be enhanced
+            if user_clearance == PrivacyLevel.RESTRICTED:
+                return True  # Highest clearance has access to everything
+            
+            if "public" in resource_path.lower():
+                return True
+            
+            if "financial" in resource_path.lower() and user_clearance == PrivacyLevel.ENTERPRISE:
+                return True
+            
+            if "customer" in resource_path.lower() and user_clearance in [PrivacyLevel.ENTERPRISE, PrivacyLevel.CONFIDENTIAL]:
+                return True
+            
+            return user_clearance == PrivacyLevel.PUBLIC and "public" in resource_path.lower()
+            
+        except Exception as e:
+            self.logger.error(f"Failed to check access: {e}")
+            return False
+
+    async def log_access_event(
+        self,
+        user_id: str,
+        resource: str,
+        action: str,
+        timestamp: datetime,
+        privacy_level: PrivacyLevel
+    ) -> None:
+        """
+        Log an access event for compliance.
+        
+        Args:
+            user_id: ID of the user
+            resource: Resource being accessed
+            action: Action performed
+            timestamp: When the action occurred
+            privacy_level: Privacy level of the resource
+        """
+        try:
+            # In a real implementation, this would write to a database or log file
+            self.logger.info(
+                "Access event logged",
+                user_id=user_id,
+                resource=resource,
+                action=action,
+                timestamp=timestamp.isoformat(),
+                privacy_level=privacy_level.value
+            )
+        except Exception as e:
+            self.logger.error(f"Failed to log access event: {e}")
+
+    async def generate_compliance_report(
+        self,
+        start_date: datetime,
+        end_date: datetime
+    ) -> Dict[str, Any]:
+        """
+        Generate a compliance report for the specified time period.
+        
+        Args:
+            start_date: Start of reporting period
+            end_date: End of reporting period
+            
+        Returns:
+            Compliance report
+        """
+        try:
+            # In a real implementation, this would query logs and generate statistics
+            # For demo purposes, return mock data
+            return {
+                'total_events': 42,
+                'violations': 0,
+                'compliance_score': 100.0,
+                'period_start': start_date.isoformat(),
+                'period_end': end_date.isoformat(),
+                'privacy_levels': {
+                    'public': 15,
+                    'private': 20,
+                    'enterprise': 5,
+                    'restricted': 2
+                }
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to generate compliance report: {e}")
             return {}

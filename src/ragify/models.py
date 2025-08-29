@@ -252,3 +252,32 @@ class OrchestratorConfig(BaseModel):
     fusion_config: Dict[str, Any] = Field(default_factory=dict)
     conflict_detection_threshold: float = Field(default=0.7, ge=0.0, le=1.0)
     metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class PrivacyRule(BaseModel):
+    """Privacy rule for access control."""
+    resource_pattern: str
+    allowed_roles: List[str]
+    required_clearance: PrivacyLevel
+    time_restrictions: Optional[Dict[str, Any]] = None
+    location_restrictions: Optional[List[str]] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class AccessControl(BaseModel):
+    """Access control configuration."""
+    user_id: str
+    role: str
+    permissions: List[str]
+    clearance_level: PrivacyLevel
+    restrictions: Dict[str, Any] = Field(default_factory=dict)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class UpdateType(str, Enum):
+    """Types of updates that can be performed."""
+    INCREMENTAL = "incremental"
+    FULL = "full"
+    PARTIAL = "partial"
+    MERGE = "merge"
+    REPLACE = "replace"

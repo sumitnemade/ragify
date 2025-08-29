@@ -38,12 +38,9 @@ class ContextScoringEngine:
         self.config = config
         self.logger = structlog.get_logger(__name__)
         
-        # Initialize embedding model
-        try:
-            self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-        except Exception as e:
-            self.logger.warning(f"Failed to load embedding model: {e}")
-            self.embedding_model = None
+        # Initialize embedding model with robust error handling
+        self.embedding_model = None
+        self._initialize_embedding_model()
         
         # Initialize ML model for ensemble scoring
         self.ml_model = RandomForestRegressor(n_estimators=100, random_state=42)
@@ -91,6 +88,22 @@ class ContextScoringEngine:
         # Historical scoring data for statistical analysis
         self.scoring_history = []
         self.confidence_calibration_data = []
+    
+    def _initialize_embedding_model(self) -> None:
+        """Initialize embedding model with robust error handling."""
+        try:
+            # Try to load the embedding model
+            self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+            self.logger.info("Embedding model loaded successfully")
+        except ImportError as e:
+            self.logger.warning(f"Embedding model dependencies not available: {e}")
+            self.logger.info("Semantic similarity scoring will be disabled")
+        except Exception as e:
+            self.logger.warning(f"Failed to load embedding model: {e}")
+            self.logger.info("Semantic similarity scoring will be disabled")
+        
+        if self.embedding_model is None:
+            self.logger.info("Using fallback scoring methods (keyword-based only)")
     
     async def calculate_multi_factor_score(
         self,

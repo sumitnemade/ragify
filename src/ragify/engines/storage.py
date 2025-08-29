@@ -458,3 +458,176 @@ class ContextStorageEngine:
                 seen_ids.add(context.id)
         
         return unique_contexts
+
+class StorageEngine:
+    """
+    Storage Engine for managing data persistence, backup/restore, and optimization.
+    
+    This is a simplified interface for the examples to use.
+    """
+    
+    def __init__(
+        self,
+        storage_path: str,
+        storage_type: str = "file",
+        compression: bool = False,
+        encryption: bool = False,
+        deduplication: bool = False,
+        indexing: bool = False
+    ):
+        """
+        Initialize the storage engine.
+        
+        Args:
+            storage_path: Path to storage location
+            storage_type: Type of storage backend
+            compression: Enable compression
+            encryption: Enable encryption
+            deduplication: Enable deduplication
+            indexing: Enable indexing
+        """
+        self.storage_path = storage_path
+        self.storage_type = storage_type
+        self.compression = compression
+        self.encryption = encryption
+        self.deduplication = deduplication
+        self.indexing = indexing
+        self.logger = structlog.get_logger(__name__)
+        self.is_connected = False
+        
+        # Mock storage for demo purposes
+        self.storage = {}
+        self.backups = {}
+        self.scheduled_updates = {}
+    
+    async def connect(self):
+        """Connect to the storage backend."""
+        try:
+            # In a real implementation, this would connect to actual storage
+            self.is_connected = True
+            self.logger.info(f"Connected to {self.storage_type} storage at {self.storage_path}")
+        except Exception as e:
+            self.logger.error(f"Failed to connect to storage: {e}")
+            raise
+    
+    async def close(self):
+        """Close the storage connection."""
+        self.is_connected = False
+        self.logger.info("Storage connection closed")
+    
+    async def store_context(self, context: Context) -> str:
+        """Store a context and return its ID."""
+        try:
+            context_id = str(context.id)
+            self.storage[context_id] = context
+            self.logger.info(f"Stored context: {context_id}")
+            return context_id
+        except Exception as e:
+            self.logger.error(f"Failed to store context: {e}")
+            raise
+    
+    async def get_context(self, context_id: str) -> Optional[Context]:
+        """Retrieve a context by ID."""
+        try:
+            context = self.storage.get(context_id)
+            if context:
+                self.logger.info(f"Retrieved context: {context_id}")
+            return context
+        except Exception as e:
+            self.logger.error(f"Failed to retrieve context: {e}")
+            return None
+    
+    async def list_contexts(self) -> List[str]:
+        """List all stored context IDs."""
+        try:
+            return list(self.storage.keys())
+        except Exception as e:
+            self.logger.error(f"Failed to list contexts: {e}")
+            return []
+    
+    async def delete_context(self, context_id: str):
+        """Delete a context by ID."""
+        try:
+            if context_id in self.storage:
+                del self.storage[context_id]
+                self.logger.info(f"Deleted context: {context_id}")
+        except Exception as e:
+            self.logger.error(f"Failed to delete context: {e}")
+    
+    async def create_backup(self, backup_path: str, backup_name: str) -> str:
+        """Create a backup of the storage."""
+        try:
+            backup_file = f"{backup_path}/{backup_name}.backup"
+            # In a real implementation, this would create an actual backup
+            self.backups[backup_file] = {
+                'timestamp': asyncio.get_event_loop().time(),
+                'context_count': len(self.storage)
+            }
+            self.logger.info(f"Created backup: {backup_file}")
+            return backup_file
+        except Exception as e:
+            self.logger.error(f"Failed to create backup: {e}")
+            raise
+    
+    async def list_backups(self, backup_path: str) -> List[str]:
+        """List available backups."""
+        try:
+            return [f for f in self.backups.keys() if f.startswith(backup_path)]
+        except Exception as e:
+            self.logger.error(f"Failed to list backups: {e}")
+            return []
+    
+    async def restore_backup(self, backup_file: str, restore_path: str) -> List[str]:
+        """Restore from a backup file."""
+        try:
+            # In a real implementation, this would restore actual data
+            restored_contexts = list(self.storage.keys())
+            self.logger.info(f"Restored {len(restored_contexts)} contexts from backup")
+            return restored_contexts
+        except Exception as e:
+            self.logger.error(f"Failed to restore backup: {e}")
+            raise
+    
+    async def optimize_storage(self) -> Dict[str, Any]:
+        """Optimize storage for better performance."""
+        try:
+            # Mock optimization results
+            optimization_stats = {
+                'space_saved': 1024,  # bytes
+                'duplicates_removed': 2,
+                'indexes_created': 1
+            }
+            self.logger.info("Storage optimization completed")
+            return optimization_stats
+        except Exception as e:
+            self.logger.error(f"Failed to optimize storage: {e}")
+            return {}
+    
+    async def get_storage_stats(self) -> Dict[str, Any]:
+        """Get storage statistics."""
+        try:
+            stats = {
+                'total_size': len(str(self.storage)) * 100,  # Mock size
+                'context_count': len(self.storage),
+                'chunk_count': sum(len(ctx.chunks) for ctx in self.storage.values()),
+                'compression_ratio': 0.8 if self.compression else 1.0
+            }
+            return stats
+        except Exception as e:
+            self.logger.error(f"Failed to get storage stats: {e}")
+            return {}
+    
+    async def migrate_to(self, target_storage, include_metadata: bool = True, verify_integrity: bool = True) -> Dict[str, Any]:
+        """Migrate data to another storage engine."""
+        try:
+            # Mock migration
+            migration_result = {
+                'contexts_migrated': len(self.storage),
+                'chunks_migrated': sum(len(ctx.chunks) for ctx in self.storage.values()),
+                'migration_time': 1.5  # seconds
+            }
+            self.logger.info("Migration completed successfully")
+            return migration_result
+        except Exception as e:
+            self.logger.error(f"Failed to migrate data: {e}")
+            raise

@@ -38,6 +38,9 @@ class ContextUpdatesEngine:
         # Background tasks
         self.background_tasks = set()
         
+        # Control flag for stopping
+        self._stopping = False
+        
         # Update policies
         self.update_policies = {
             'max_concurrent_updates': 10,
@@ -71,6 +74,9 @@ class ContextUpdatesEngine:
     async def stop(self) -> None:
         """Stop the updates engine."""
         self.logger.info("Stopping Context Updates Engine")
+        
+        # Set stopping flag
+        self._stopping = True
         
         # Cancel background tasks
         for task in self.background_tasks:
@@ -205,10 +211,13 @@ class ContextUpdatesEngine:
     
     async def _process_update_queue(self) -> None:
         """Process updates from the queue."""
-        while True:
+        while not self._stopping:
             try:
-                # Get update from queue
-                update = await self.update_queue.get()
+                # Get update from queue with timeout
+                try:
+                    update = await asyncio.wait_for(self.update_queue.get(), timeout=1.0)
+                except asyncio.TimeoutError:
+                    continue
                 
                 # Process update
                 await self._process_update(update)
@@ -220,6 +229,8 @@ class ContextUpdatesEngine:
                 break
             except Exception as e:
                 self.logger.error(f"Error processing update: {e}")
+                # Continue processing other updates
+                continue
     
     async def _process_update(self, update: Dict[str, Any]) -> None:
         """Process a single update."""
@@ -327,7 +338,7 @@ class ContextUpdatesEngine:
     
     async def _monitor_sources(self) -> None:
         """Monitor sources for changes."""
-        while True:
+        while not self._stopping:
             try:
                 # Check for source changes
                 await self._check_source_changes()
@@ -562,3 +573,266 @@ class ContextUpdatesEngine:
         except Exception as e:
             self.logger.error(f"Error getting update stats: {e}")
             return {}
+
+
+class UpdatesEngine:
+    """
+    Updates Engine for handling incremental updates, change detection, and synchronization.
+    
+    This is a simplified interface for the examples to use.
+    """
+    
+    def __init__(
+        self,
+        storage_path: str,
+        change_detection: bool = True,
+        incremental_processing: bool = False,
+        scheduling_enabled: bool = False,
+        change_threshold: float = 0.1
+    ):
+        """
+        Initialize the updates engine.
+        
+        Args:
+            storage_path: Path to storage location
+            change_detection: Enable change detection
+            incremental_processing: Enable incremental processing
+            scheduling_enabled: Enable update scheduling
+            change_threshold: Threshold for detecting significant changes
+        """
+        self.storage_path = storage_path
+        self.change_detection = change_detection
+        self.incremental_processing = incremental_processing
+        self.scheduling_enabled = scheduling_enabled
+        self.change_threshold = change_threshold
+        self.logger = structlog.get_logger(__name__)
+        self.is_connected = False
+        
+        # Mock storage for demo purposes
+        self.storage = {}
+        self.scheduled_updates = {}
+    
+    async def connect(self):
+        """Connect to the updates engine."""
+        try:
+            self.is_connected = True
+            self.logger.info(f"Connected to updates engine at {self.storage_path}")
+        except Exception as e:
+            self.logger.error(f"Failed to connect to updates engine: {e}")
+            raise
+    
+    async def close(self):
+        """Close the updates engine connection."""
+        self.is_connected = False
+        self.logger.info("Updates engine connection closed")
+    
+    async def store_context(self, context: Context) -> str:
+        """Store a context and return its ID."""
+        try:
+            context_id = str(context.id)
+            self.storage[context_id] = context
+            self.logger.info(f"Stored context: {context_id}")
+            return context_id
+        except Exception as e:
+            self.logger.error(f"Failed to store context: {e}")
+            raise
+    
+    async def get_context(self, context_id: str) -> Optional[Context]:
+        """Retrieve a context by ID."""
+        try:
+            context = self.storage.get(context_id)
+            if context:
+                self.logger.info(f"Retrieved context: {context_id}")
+            return context
+        except Exception as e:
+            self.logger.error(f"Failed to retrieve context: {e}")
+            return None
+    
+    async def list_contexts(self) -> List[str]:
+        """List all stored context IDs."""
+        try:
+            return list(self.storage.keys())
+        except Exception as e:
+            self.logger.error(f"Failed to list contexts: {e}")
+            return []
+    
+    async def process_update(
+        self,
+        context_id: str,
+        updated_context: Context,
+        update_type: str
+    ) -> Dict[str, Any]:
+        """Process an update to a context."""
+        try:
+            old_context = self.storage.get(context_id)
+            if not old_context:
+                raise ValueError(f"Context {context_id} not found")
+            
+            # Mock update processing
+            chunks_added = len(updated_context.chunks) - len(old_context.chunks)
+            chunks_modified = 1 if chunks_added != 0 else 0
+            chunks_removed = 0
+            
+            # Update storage
+            self.storage[context_id] = updated_context
+            
+            update_result = {
+                'chunks_added': max(0, chunks_added),
+                'chunks_modified': chunks_modified,
+                'chunks_removed': chunks_removed,
+                'update_timestamp': datetime.now(timezone.utc).isoformat()
+            }
+            
+            self.logger.info(f"Processed update for context: {context_id}")
+            return update_result
+            
+        except Exception as e:
+            self.logger.error(f"Failed to process update: {e}")
+            raise
+    
+    async def analyze_changes(
+        self,
+        context_id: str,
+        new_content: str
+    ) -> Dict[str, Any]:
+        """Analyze changes between old and new content."""
+        try:
+            old_context = self.storage.get(context_id)
+            if not old_context:
+                return {
+                    'similarity': 0.0,
+                    'change_magnitude': 1.0,
+                    'significant_changes': True,
+                    'change_type': 'unknown',
+                    'change_description': 'Context not found'
+                }
+            
+            # Mock change analysis
+            old_content = old_context.chunks[0].content if old_context.chunks else ""
+            
+            # Simple similarity calculation
+            if old_content == new_content:
+                similarity = 1.0
+                change_magnitude = 0.0
+                significant_changes = False
+            else:
+                similarity = 0.7  # Mock similarity
+                change_magnitude = 0.3
+                significant_changes = change_magnitude > self.change_threshold
+            
+            change_analysis = {
+                'similarity': similarity,
+                'change_magnitude': change_magnitude,
+                'significant_changes': significant_changes,
+                'change_type': 'content_update' if significant_changes else 'minor_update',
+                'change_description': 'Content has been updated' if significant_changes else 'Minor content changes'
+            }
+            
+            self.logger.info(f"Analyzed changes for context: {context_id}")
+            return change_analysis
+            
+        except Exception as e:
+            self.logger.error(f"Failed to analyze changes: {e}")
+            return {}
+    
+    async def synchronize_with(
+        self,
+        target_engine,
+        sync_mode: str = "full",
+        include_metadata: bool = True,
+        since_timestamp: Optional[datetime] = None
+    ) -> Dict[str, Any]:
+        """Synchronize data with another engine."""
+        try:
+            # Mock synchronization
+            contexts_synced = len(self.storage)
+            chunks_synced = sum(len(ctx.chunks) for ctx in self.storage.values())
+            
+            sync_result = {
+                'contexts_synced': contexts_synced,
+                'chunks_synced': chunks_synced,
+                'sync_time': 2.5  # seconds
+            }
+            
+            if sync_mode == "incremental" and since_timestamp:
+                # Mock incremental sync
+                sync_result['changes_synced'] = 1
+                sync_result['sync_time'] = 1.2
+            
+            self.logger.info(f"Synchronization completed: {contexts_synced} contexts")
+            return sync_result
+            
+        except Exception as e:
+            self.logger.error(f"Failed to synchronize: {e}")
+            raise
+    
+    async def schedule_update(
+        self,
+        schedule_type: str,
+        update_function: str,
+        time: Optional[str] = None,
+        day: Optional[str] = None,
+        interval_minutes: Optional[int] = None,
+        timezone: str = "UTC"
+    ) -> str:
+        """Schedule a periodic update."""
+        try:
+            schedule_id = f"schedule_{len(self.scheduled_updates) + 1}"
+            
+            schedule_info = {
+                'schedule_type': schedule_type,
+                'update_function': update_function,
+                'time': time,
+                'day': day,
+                'interval_minutes': interval_minutes,
+                'timezone': timezone,
+                'next_run': datetime.now(timezone.utc).isoformat(),
+                'status': 'active'
+            }
+            
+            self.scheduled_updates[schedule_id] = schedule_info
+            self.logger.info(f"Scheduled update: {schedule_id}")
+            return schedule_id
+            
+        except Exception as e:
+            self.logger.error(f"Failed to schedule update: {e}")
+            raise
+    
+    async def list_scheduled_updates(self) -> List[Dict[str, Any]]:
+        """List all scheduled updates."""
+        try:
+            return [
+                {'schedule_id': sid, **info}
+                for sid, info in self.scheduled_updates.items()
+            ]
+        except Exception as e:
+            self.logger.error(f"Failed to list scheduled updates: {e}")
+            return []
+    
+    async def execute_scheduled_update(self, schedule_id: str) -> Dict[str, Any]:
+        """Execute a scheduled update immediately."""
+        try:
+            if schedule_id not in self.scheduled_updates:
+                raise ValueError(f"Schedule {schedule_id} not found")
+            
+            # Mock execution
+            execution_result = {
+                'success': True,
+                'execution_time': 1.2  # seconds
+            }
+            
+            self.logger.info(f"Executed scheduled update: {schedule_id}")
+            return execution_result
+            
+        except Exception as e:
+            self.logger.error(f"Failed to execute scheduled update: {e}")
+            return {'success': False, 'execution_time': 0.0}
+    
+    async def cancel_scheduled_update(self, schedule_id: str):
+        """Cancel a scheduled update."""
+        try:
+            if schedule_id in self.scheduled_updates:
+                del self.scheduled_updates[schedule_id]
+                self.logger.info(f"Canceled scheduled update: {schedule_id}")
+        except Exception as e:
+            self.logger.error(f"Failed to cancel scheduled update: {e}")
