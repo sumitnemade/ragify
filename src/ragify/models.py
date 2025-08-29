@@ -251,6 +251,8 @@ class OrchestratorConfig(BaseModel):
     log_level: str = "INFO"
     fusion_config: Dict[str, Any] = Field(default_factory=dict)
     conflict_detection_threshold: float = Field(default=0.7, ge=0.0, le=1.0)
+    source_timeout: float = 30.0  # seconds for source processing timeout
+    max_concurrent_sources: int = 10  # maximum concurrent source processing
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 

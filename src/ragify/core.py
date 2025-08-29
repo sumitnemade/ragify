@@ -27,6 +27,7 @@ from .models import (
     ContextRequest,
     ContextResponse,
     ContextSource,
+    ContextChunk,
     OrchestratorConfig,
     PrivacyLevel,
 )
@@ -245,30 +246,15 @@ class ContextOrchestrator:
             raise
     
     async def _retrieve_context(self, request: ContextRequest) -> Context:
-        """Retrieve context from all sources."""
+        """Retrieve context from all sources using concurrent processing."""
         # Get relevant sources
         sources = self._filter_sources(request.sources, request.exclude_sources)
         
         if not sources:
             raise ContextNotFoundError(request.query, request.user_id)
         
-        # Retrieve chunks from all sources
-        all_chunks = []
-        for source_name, source in sources.items():
-            try:
-                chunks = await source.get_chunks(
-                    query=request.query,
-                    max_chunks=request.max_chunks,
-                    min_relevance=request.min_relevance,
-                    user_id=request.user_id,
-                    session_id=request.session_id,
-                )
-                all_chunks.extend(chunks)
-            except Exception as e:
-                self.logger.warning(
-                    f"Failed to get chunks from source {source_name}",
-                    error=str(e),
-                )
+        # Retrieve chunks from all sources concurrently
+        all_chunks = await self._retrieve_context_concurrent(request, sources)
         
         if not all_chunks:
             raise ContextNotFoundError(request.query, request.user_id)
@@ -300,6 +286,85 @@ class ContextOrchestrator:
             context.optimize_for_tokens(request.max_tokens)
         
         return context
+    
+    async def _retrieve_context_concurrent(self, request: ContextRequest, sources: Dict[str, BaseDataSource]) -> List[ContextChunk]:
+        """Retrieve context from all sources concurrently for optimal performance."""
+        if not sources:
+            return []
+        
+        # Create concurrent tasks for all sources
+        tasks = []
+        source_names = []
+        
+        for source_name, source in sources.items():
+            task = self._get_chunks_from_source(
+                source_name=source_name,
+                source=source,
+                request=request
+            )
+            tasks.append(task)
+            source_names.append(source_name)
+        
+        # Execute all sources concurrently with timeout
+        try:
+            self.logger.info(f"Processing {len(sources)} sources concurrently")
+            results = await asyncio.wait_for(
+                asyncio.gather(*tasks, return_exceptions=True),
+                timeout=self.config.source_timeout
+            )
+        except asyncio.TimeoutError:
+            self.logger.warning("Source processing timeout, using partial results")
+            # Cancel remaining tasks
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            # Wait for cancellation to complete
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Combine results and handle errors gracefully
+        all_chunks = []
+        successful_sources = 0
+        failed_sources = 0
+        
+        for i, result in enumerate(results):
+            source_name = source_names[i]
+            if isinstance(result, list):
+                all_chunks.extend(result)
+                successful_sources += 1
+                self.logger.info(f"Source {source_name} returned {len(result)} chunks")
+            else:
+                failed_sources += 1
+                if isinstance(result, Exception):
+                    self.logger.warning(f"Source {source_name} failed: {result}")
+                else:
+                    self.logger.warning(f"Source {source_name} returned unexpected result type: {type(result)}")
+        
+        self.logger.info(f"Concurrent processing completed: {successful_sources} successful, {failed_sources} failed, total chunks: {len(all_chunks)}")
+        return all_chunks
+    
+    async def _get_chunks_from_source(
+        self, 
+        source_name: str, 
+        source: BaseDataSource, 
+        request: ContextRequest
+    ) -> List[ContextChunk]:
+        """Get chunks from a single source with error handling."""
+        try:
+            chunks = await source.get_chunks(
+                query=request.query,
+                max_chunks=request.max_chunks,
+                min_relevance=request.min_relevance,
+                user_id=request.user_id,
+                session_id=request.session_id,
+            )
+            return chunks if chunks else []
+        except Exception as e:
+            self.logger.warning(
+                f"Failed to get chunks from source {source_name}",
+                error=str(e),
+            )
+            # Return empty list instead of raising to allow other sources to continue
+            return []
     
     def _filter_sources(
         self,

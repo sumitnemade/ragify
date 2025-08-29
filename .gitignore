@@ -102,7 +102,7 @@ ipython_config.py
 #poetry.lock
 
 # pdm
-#   Similar to Pipfile.lock, it is generally recommended to include pdm.lock in version control.
+#   Similar to Pipfile.lock, it is generally recommended to include poetry.lock in version control.
 #pdm.lock
 #   pdm stores project-wide configurations in .pdm.toml, but it is recommended to not include it
 #   in version control.
@@ -156,23 +156,56 @@ cython_debug/
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
 #  be added to the global gitignore or merged into this project gitignore.  For a PyCharm
 #  project, uncomment the following line:
-#.idea/
+.idea/
 
 # VS Code
 .vscode/
 
-# Ragify specific
+# Ragify specific - Database files
 *.db
 *.sqlite
 *.sqlite3
+test.db
+
+# Ragify specific - Log files
 *.log
+logs/
+
+# Ragify specific - Temporary and cache directories
 temp/
 tmp/
 cache/
 vector_db/
 chroma_db/
 faiss_index/
+test_documents/
+test_database.db
+mixed_test_db.db
+mixed_test_docs/
+perf_tuning_docs/
+perf_test_*/
+
+# Ragify specific - Test artifacts
+test_*.py
+*_test.py
+debug_*.py
+quick_test.py
+simple_test.py
+minimal_test.py
+
+# Ragify specific - Performance and monitoring files
+ragify_performance.log
+optimal_ragify_config.json
 
 # OS specific
 .DS_Store
 Thumbs.db
+*.swp
+*.swo
+*~
+
+# Editor backup files
+*~
+*.bak
+*.tmp
+*.temp

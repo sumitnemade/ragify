@@ -9,15 +9,19 @@ __author__ = "Sumit Nemade"
 __email__ = "nemadesumit@gmail.com"
 
 from .core import ContextOrchestrator
-from .models import Context, ContextSource, RelevanceScore, PrivacyLevel
+from .models import Context, ContextRequest, ContextResponse, ContextSource, ContextChunk, RelevanceScore, PrivacyLevel, OrchestratorConfig
 from .exceptions import ICOException, ContextNotFoundError, SourceConnectionError
 
 __all__ = [
     "ContextOrchestrator",
     "Context",
-    "ContextSource", 
+    "ContextRequest",
+    "ContextResponse", 
+    "ContextSource",
+    "ContextChunk",
     "RelevanceScore",
     "PrivacyLevel",
+    "OrchestratorConfig",
     "ICOException",
     "ContextNotFoundError",
     "SourceConnectionError",

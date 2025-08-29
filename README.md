@@ -1,128 +1,157 @@
-# Ragify - Intelligent Context Orchestration Plugin
+# Ragify - Smart Context for AI Apps
 
-A generic, open-source plugin for intelligent context management in LLM-powered applications.
+**A framework for managing context from multiple data sources with conflict resolution.**
 
-## 🎯 Overview
+## 🎯 What is Ragify?
 
-Ragify is a context orchestration framework that provides a solid foundation for managing context from multiple data sources. It includes intelligent multi-source context fusion, vector database support, and a modular architecture for building advanced context management solutions.
+A Python framework that combines data from multiple sources (docs, APIs, databases, real-time) and resolves conflicts. Built for **AI apps** that need accurate, current information.
 
-## 🚀 Key Features
+## 🚀 Why AI Apps Need This?
 
-- **Intelligent Multi-Source Context Fusion**: Advanced conflict detection and resolution
-- **Conflict Resolution Strategies**: Highest authority, newest data, consensus, weighted average
-- **Conflict Types**: Content contradictions, factual disagreements, temporal conflicts, source authority, data freshness, semantic conflicts
-- **Vector Database Support**: Full integration with ChromaDB, Pinecone, Weaviate, and FAISS
-- **Multi-Factor Relevance Scoring**: Advanced relevance assessment with ensemble methods
-- **Privacy Level Framework**: Configurable privacy controls (Public, Private, Restricted)
-- **Modular Architecture**: Pluggable data sources and engines
-- **Async Processing**: Non-blocking operations throughout
-- **Structured Logging**: Comprehensive logging with structlog
+**AI applications** often need to combine information from multiple sources. **Ragify helps** by:
 
-## 🏗️ Architecture
+- **Detecting conflicts** between data sources
+- **Resolving contradictions** using source authority and freshness
+- **Combining data** into coherent context
+- **Managing privacy** with configurable security levels
+- **Processing sources** concurrently for better performance
+
+## 🤖 AI Benefits
+
+### **Chatbots & Assistants:**
+- **Conflict detection** in responses
+- **Multi-source context** management
+- **Source tracking** for transparency
+
+### **Knowledge Systems:**
+- **Data conflict resolution** between repositories
+- **Multi-source data fusion**
+- **Source authority weighting**
+
+### **Research & Analysis:**
+- **Combines** papers, databases, live data
+- **Detects conflicts** automatically
+- **Source validation** capabilities
+
+## 🏗️ How It Works
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    LLM Application Layer                        │
+│                    AI Apps                                     │
 ├─────────────────────────────────────────────────────────────────┤
-│                    Ragify Core Interface                        │
+│                    Ragify Core                                 │
 ├─────────────────────────────────────────────────────────────────┤
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ │
-│  │   Context   │ │   Context   │ │   Context   │ │   Context   │ │
-│  │  Fusion     │ │  Scoring    │ │  Storage    │ │  Updates    │ │
+│  │   Fusion    │ │   Scoring   │ │   Storage   │ │   Updates   │ │
 │  │  Engine     │ │  Engine     │ │  Engine     │ │  Engine     │ │
-│  │ (Framework) │ │ (Basic)     │ │ (Framework) │ │ (Framework) │ │
+│  │ (Conflicts) │ │ (Relevance) │ │ (Save)      │ │ (Live)      │ │
 │  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘ │
 ├─────────────────────────────────────────────────────────────────┤
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ │
-│  │   Vector    │ │   Cache     │ │   Privacy   │ │   Analytics │ │
-│  │  Database   │ │  Manager    │ │  Manager    │ │  Engine     │ │
-│  │(Framework)  │ │(Framework)  │ │ (Basic)     │ │(Framework)  │ │
+│  │   Vector    │ │   Cache     │ │   Privacy   │ │   Monitor   │ │
+│  │     DB      │ │  Manager    │ │  Manager    │ │  Engine     │ │
+│  │(ChromaDB,   │ │(Redis,      │ │ (Encrypt)   │ │(Performance)│ │
+│  │Pinecone,    │ │Memcached)   │ │             │ │             │ │
+│  │Weaviate,    │ │             │ │             │ │             │ │
+│  │FAISS)       │ │             │ │             │ │             │ │
 │  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘ │
 ├─────────────────────────────────────────────────────────────────┤
-│                    Data Source Layer                            │
+│                    Data Sources                                 │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ │
 │  │  Documents  │ │    APIs     │ │  Databases  │ │ Real-time   │ │
-│  │ (Basic)     │ │ (Basic)     │ │ (Basic)     │ │   Data      │ │
-│  │             │ │             │ │             │ │(Framework)  │ │
+│  │ (PDF, DOCX, │ │ (REST,      │ │ (SQL,       │ │   Data      │ │
+│  │ TXT, MD)    │ │ GraphQL)    │ │ NoSQL)      │ │(WebSocket,  │ │
+│  │             │ │             │ │             │ │ MQTT, Kafka)│ │
 │  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘ │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-## 📦 Installation
+### **Data Flow:**
+1. **Request** → Orchestrator receives context query
+2. **Concurrent processing** → Sources processed in parallel  
+3. **Relevance scoring** → Assessment of chunk relevance
+4. **Conflict resolution** → Detection and resolution of contradictions
+5. **Storage** → Context storage with privacy controls
+6. **Response** → Processed context delivered
+
+## 📦 Setup
 
 ```bash
-pip install ragify
+# Get code
+git clone https://github.com/sumitnemade/ragify.git
+cd ragify
+
+# Install deps
+pip install -r requirements.txt
+
+# Set path
+export PYTHONPATH=src:$PYTHONPATH
 ```
 
 ## 🔧 Quick Start
 
 ```python
-from ragify import ContextOrchestrator
-from ragify.sources import DocumentSource, APISource, DatabaseSource
+import sys
+sys.path.insert(0, 'src')
 
-# Initialize the orchestrator
+from ragify import ContextOrchestrator
+from ragify.sources import DocumentSource, APISource
+
+# Setup
 orchestrator = ContextOrchestrator(
-    vector_db_url="redis://localhost:6379",
-    cache_url="redis://localhost:6379",
-    privacy_level="enterprise"
+    vector_db_url="memory://",
+    privacy_level="private"
 )
 
-# Add data sources
+# Add sources
 orchestrator.add_source(DocumentSource("./docs"))
-orchestrator.add_source(APISource("https://api.example.com"))
-orchestrator.add_source(DatabaseSource("postgresql://..."))
+orchestrator.add_source(APISource("https://api.company.com/data"))
 
 # Get context
 context = await orchestrator.get_context(
-    query="What are the latest sales figures?",
-    user_id="user123",
-    session_id="session456",
-    max_tokens=4000
+    query="Latest sales and trends?",
+    max_chunks=10
 )
-
-print(f"Total chunks: {len(context.context.chunks)}")
-print(f"Sources: {[chunk.source.name for chunk in context.context.chunks]}")
 ```
 
-## ⚠️ Current Status
+## 🏗️ Key Features
 
-**This is a framework/prototype with the following status:**
+- **Conflict Detection**: Identifies data contradictions
+- **Multi-Source Support**: Documents, APIs, databases, real-time data
+- **Privacy Management**: Configurable security levels
+- **Vector Database Support**: ChromaDB, Pinecone, Weaviate, FAISS
+- **Concurrent Processing**: Parallel source handling
+- **Relevance Scoring**: Multi-factor assessment
 
-### ✅ **Implemented**
-- Core orchestrator architecture
-- Data models and validation
-- Basic relevance scoring with embeddings
-- Privacy level framework
-- Source abstraction layer
-- Async processing framework
-- Comprehensive logging
-- **Intelligent multi-source context fusion with conflict resolution**
-- **Vector database support (ChromaDB, Pinecone, Weaviate, FAISS)**
-- Test suite (comprehensive test coverage)
+## 📊 Use Cases
 
-### 🔄 **Framework Only (Placeholder Implementations)**
-- Advanced compliance features (GDPR, HIPAA, SOX)
-- Enterprise-grade security features
+- **AI Chatbots**: Multi-source context management
+- **Knowledge Systems**: Data conflict resolution
+- **Research Tools**: Multi-source data combination
+- **Enterprise Search**: Privacy-controlled search
+- **Data Integration**: Combining multiple data sources
 
-### 📋 **Development Roadmap**
-- [x] **COMPLETED**: Implement vector database connections (ChromaDB, Pinecone, Weaviate, FAISS)
-- [x] **COMPLETED**: Add document processing libraries (PDF, DOCX, DOC, TXT, MD)
-- [x] **COMPLETED**: Add real-time streaming capabilities (WebSocket, MQTT, Redis, Kafka)
-- [x] **COMPLETED**: Implement statistical confidence calculations
-- [ ] Add basic compliance features
+## 🚀 Status
 
-## 📚 Documentation
+**Current Status**: ✅
+- Core framework implemented
+- Test suite included
+- Examples provided
+- Not on PyPI yet
 
-- [Architecture Guide](docs/architecture.md)
-- [API Reference](docs/api.md)
-- [Configuration Guide](docs/configuration.md)
-- [Deployment Guide](docs/deployment.md)
-- [Contributing Guide](CONTRIBUTING.md)
+**Next Steps**: PyPI release, community feedback
 
-## 🤝 Contributing
+## 📚 Learn More
 
-We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+- [Basic Usage](examples/basic_usage.py)
+- [Conflict Resolution](examples/intelligent_fusion_demo.py)
+- [Vector DB](examples/vector_db_demo.py)
+- [Full Docs](docs/)
+
+## 🤝 Contribute
+
+Help us improve! See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## 📄 License
 
-MIT License - see [LICENSE](LICENSE) for details.
+MIT - see [LICENSE](LICENSE).
