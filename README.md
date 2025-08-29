@@ -74,6 +74,22 @@ A Python framework that combines data from multiple sources (docs, APIs, databas
 5. **Storage** → Context storage with privacy controls
 6. **Response** → Processed context delivered
 
+## 🌟 Featured Example: RAG Chat Assistant
+
+**See Ragify in action!** Check out our complete RAG-based Chat Assistant that demonstrates the full power of the framework:
+
+### 🤖 [RAG Chat Assistant](examples/rag_chat_assistant/)
+
+A production-ready chatbot that showcases:
+- **📚 PDF Document Processing** with intelligent chunking
+- **🔍 Vector Search** using FAISS database
+- **🤖 OpenAI Integration** for AI-powered responses
+- **💬 Streamlit UI** with modern chat interface
+- **🧠 Intelligent Context Fusion** and conflict resolution
+- **⚡ Real-time Processing** with async operations
+
+**Perfect for learning Ragify!** This example shows how to build a complete RAG system from scratch using all of Ragify's core features.
+
 ## 📦 Setup
 
 ```bash
@@ -141,6 +157,7 @@ context = await orchestrator.get_context(
 
 ## 📚 Learn More
 
+- **[RAG Chat Assistant](examples/rag_chat_assistant/)** - Complete production-ready example ⭐
 - [Basic Usage](examples/basic_usage.py)
 - [Conflict Resolution](examples/intelligent_fusion_demo.py)
 - [Vector DB](examples/vector_db_demo.py)
