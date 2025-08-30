@@ -197,6 +197,59 @@ minimal_test.py
 ragify_performance.log
 optimal_ragify_config.json
 
+# Ragify specific - Generated database files in examples
+examples/*.db
+examples/demo_database.db
+examples/performance_demo.db
+
+# Ragify specific - Build artifacts
+src/*.egg-info/
+src/ragify.egg-info/
+
+# Ragify specific - Benchmark results
+.benchmarks/
+
+# Ragify specific - Coverage reports
+.coverage
+htmlcov/
+
+# Ragify specific - Pytest cache
+.pytest_cache/
+
+# Ragify specific - Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Ragify specific - Python virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+.env/
+
+# Ragify specific - Python packaging
+*.egg-info/
+*.egg
+build/
+dist/
+
+# Ragify specific - Test database files
+test.db
+
+# Ragify specific - Additional patterns
+*.pid
+*.seed
+*.pid.lock
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
 # OS specific
 .DS_Store
 Thumbs.db
@@ -209,3 +262,6 @@ Thumbs.db
 *.bak
 *.tmp
 *.temp
+
+# Cursor IDE
+.cursor/

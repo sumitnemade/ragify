@@ -5,14 +5,14 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="90fe85d2-ef2a-48b6-aa64-1563ad4f3ee2" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/PERFORMANCE_OPTIMIZATION_README.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/examples/test_concurrent_processing.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/examples/rag_chat_assistant/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/examples/rag_chat_assistant/rag_chat_assistant.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/examples/rag_chat_assistant/requirements.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/examples/rag_chat_assistant/screenshots/image1.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/examples/rag_chat_assistant/screenshots/image2.png" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ragify/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ragify/__init__.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ragify/core.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ragify/core.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ragify/models.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ragify/models.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ragify/sources/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ragify/sources/__init__.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/CONTRIBUTING.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/CONTRIBUTING.md" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
