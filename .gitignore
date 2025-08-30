@@ -192,6 +192,7 @@ debug_*.py
 quick_test.py
 simple_test.py
 minimal_test.py
+test_results/
 
 # Ragify specific - Performance and monitoring files
 ragify_performance.log
