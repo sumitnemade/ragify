@@ -11,11 +11,11 @@ from datetime import datetime, timedelta
 from typing import List
 
 from ragify import ContextOrchestrator
-from ragify.models import (
+from src.ragify.models import (
     Context, ContextChunk, ContextSource, SourceType, RelevanceScore,
     ConflictType, ConflictResolutionStrategy, PrivacyLevel
 )
-from ragify.sources import DocumentSource, APISource, DatabaseSource
+from src.ragify.sources import DocumentSource, APISource, DatabaseSource
 
 
 async def create_conflicting_data_sources():

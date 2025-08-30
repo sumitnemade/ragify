@@ -10,8 +10,8 @@ import asyncio
 import json
 from datetime import datetime
 from uuid import uuid4
-from ragify.storage.privacy import PrivacyManager
-from ragify.models import (
+from src.ragify.storage.privacy import PrivacyManager
+from src.ragify.models import (
     Context, ContextChunk, ContextSource, SourceType, 
     PrivacyLevel, PrivacyRule, AccessControl
 )

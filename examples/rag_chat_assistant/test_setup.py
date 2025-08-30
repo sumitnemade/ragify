@@ -45,13 +45,13 @@ def test_ragify_imports():
         from ragify import ContextOrchestrator
         print("✅ ContextOrchestrator imported successfully")
         
-        from ragify.models import PrivacyLevel, SourceType
+        from src.ragify.models import PrivacyLevel, SourceType
         print("✅ RAGify models imported successfully")
         
-        from ragify.sources.document import DocumentSource
+        from src.ragify.sources.document import DocumentSource
         print("✅ DocumentSource imported successfully")
         
-        from ragify.storage.vector_db import VectorDatabase
+        from src.ragify.storage.vector_db import VectorDatabase
         print("✅ VectorDatabase imported successfully")
         
         return True
@@ -105,7 +105,7 @@ def test_ragify_components():
         sys.path.insert(0, src_path)
         
         from ragify import ContextOrchestrator
-        from ragify.models import PrivacyLevel
+        from src.ragify.models import PrivacyLevel
         
         # Test orchestrator initialization
         orchestrator = ContextOrchestrator(
@@ -116,7 +116,7 @@ def test_ragify_components():
         print("✅ ContextOrchestrator initialized successfully")
         
         # Test vector database initialization
-        from ragify.storage.vector_db import VectorDatabase
+        from src.ragify.storage.vector_db import VectorDatabase
         vector_db = VectorDatabase("memory://")
         print("✅ VectorDatabase initialized successfully")
         

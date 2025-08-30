@@ -13,13 +13,13 @@ from uuid import uuid4
 from datetime import datetime, timezone
 
 from ragify import ContextOrchestrator
-from ragify.models import (
+from src.ragify.models import (
     PrivacyLevel, SourceType, ContextRequest, ContextResponse, 
     Context, ContextChunk, ContextSource, RelevanceScore,
     OrchestratorConfig
 )
-from ragify.sources import DocumentSource, APISource, DatabaseSource, RealtimeSource
-from ragify.exceptions import (
+from src.ragify.sources import DocumentSource, APISource, DatabaseSource, RealtimeSource
+from src.ragify.exceptions import (
     ICOException, ContextNotFoundError, ConfigurationError, 
     PrivacyViolationError, SourceConnectionError
 )

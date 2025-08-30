@@ -21,12 +21,12 @@ import pytest_asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 # Import RAGify components for testing
-from ragify.core import ContextOrchestrator
-from ragify.engines.fusion import IntelligentContextFusionEngine
-from ragify.engines.scoring import ContextScoringEngine
-from ragify.engines.storage import StorageEngine
-from ragify.engines.updates import ContextUpdatesEngine
-from ragify.models import (
+from src.ragify.core import ContextOrchestrator
+from src.ragify.engines.fusion import IntelligentContextFusionEngine
+from src.ragify.engines.scoring import ContextScoringEngine
+from src.ragify.engines.storage import StorageEngine
+from src.ragify.engines.updates import ContextUpdatesEngine
+from src.ragify.models import (
     Context,
     ContextChunk,
     ContextRequest,
@@ -37,15 +37,15 @@ from ragify.models import (
     RelevanceScore,
     SourceType,
 )
-from ragify.sources.api import APISource
-from ragify.sources.database import DatabaseSource
-from ragify.sources.document import DocumentSource
-from ragify.sources.realtime import RealtimeSource
-from ragify.storage.cache import CacheManager
-from ragify.storage.compliance import ComplianceManager
-from ragify.storage.privacy import PrivacyManager
-from ragify.storage.security import SecurityManager
-from ragify.storage.vector_db import VectorDatabase
+from src.ragify.sources.api import APISource
+from src.ragify.sources.database import DatabaseSource
+from src.ragify.sources.document import DocumentSource
+from src.ragify.sources.realtime import RealtimeSource
+from src.ragify.storage.cache import CacheManager
+from src.ragify.storage.compliance import ComplianceManager
+from src.ragify.storage.privacy import PrivacyManager
+from src.ragify.storage.security import SecurityManager
+from src.ragify.storage.vector_db import VectorDatabase
 
 
 # =============================================================================

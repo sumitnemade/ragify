@@ -12,8 +12,8 @@ import os
 from pathlib import Path
 from datetime import datetime
 from uuid import uuid4
-from ragify.engines.storage import StorageEngine
-from ragify.models import (
+from src.ragify.engines.storage import StorageEngine
+from src.ragify.models import (
     Context, ContextChunk, ContextSource, SourceType, 
     PrivacyLevel, RelevanceScore
 )

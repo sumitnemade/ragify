@@ -23,13 +23,13 @@ import math
 import statistics
 
 from ragify import ContextOrchestrator
-from ragify.models import (
+from src.ragify.models import (
     Context, ContextChunk, PrivacyLevel, ContextSource, 
     SourceType, RelevanceScore, ConflictType, ConflictInfo,
     ConflictResolutionStrategy, FusionMetadata
 )
-from ragify.engines.scoring import ContextScoringEngine
-from ragify.models import OrchestratorConfig
+from src.ragify.engines.scoring import ContextScoringEngine
+from src.ragify.models import OrchestratorConfig
 
 
 class AdvancedScoringDemo:

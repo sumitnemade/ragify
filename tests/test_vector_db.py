@@ -10,9 +10,9 @@ from pathlib import Path
 from datetime import datetime
 from unittest.mock import Mock, patch, MagicMock
 
-from ragify.storage.vector_db import VectorDatabase
-from ragify.models import ContextChunk, ContextSource, SourceType, RelevanceScore
-from ragify.exceptions import VectorDBError
+from src.ragify.storage.vector_db import VectorDatabase
+from src.ragify.models import ContextChunk, ContextSource, SourceType, RelevanceScore
+from src.ragify.exceptions import VectorDBError
 
 
 class TestVectorDatabase:
@@ -180,7 +180,7 @@ class TestVectorDatabase:
     async def test_weaviate_db_functionality(self, sample_chunks, sample_embeddings, query_embedding):
         """Test Weaviate functionality with mocked client."""
         # Skip this test if Weaviate is not available
-        from ragify.storage.vector_db import WEAVIATE_AVAILABLE
+        from src.ragify.storage.vector_db import WEAVIATE_AVAILABLE
         if not WEAVIATE_AVAILABLE:
             pytest.skip("Weaviate not available - skipping test")
         

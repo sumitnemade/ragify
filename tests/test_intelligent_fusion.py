@@ -7,8 +7,8 @@ import asyncio
 from datetime import datetime, timedelta
 from uuid import uuid4
 
-from ragify.engines.fusion import IntelligentContextFusionEngine
-from ragify.models import (
+from src.ragify.engines.fusion import IntelligentContextFusionEngine
+from src.ragify.models import (
     Context, ContextChunk, ContextSource, SourceType, RelevanceScore,
     OrchestratorConfig, ConflictType, ConflictResolutionStrategy,
     PrivacyLevel

@@ -10,8 +10,8 @@ import asyncio
 import numpy as np
 from datetime import datetime
 from uuid import uuid4
-from ragify.engines.scoring import ContextScoringEngine
-from ragify.models import OrchestratorConfig, ContextChunk, ContextSource, SourceType, PrivacyLevel
+from src.ragify.engines.scoring import ContextScoringEngine
+from src.ragify.models import OrchestratorConfig, ContextChunk, ContextSource, SourceType, PrivacyLevel
 
 async def demo_multi_factor_scoring():
     """Demonstrate multi-factor scoring with different content types."""

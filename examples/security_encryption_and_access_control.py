@@ -20,10 +20,10 @@ from pathlib import Path
 import sys
 sys.path.append(str(Path(__file__).parent.parent / "src"))
 
-from ragify.storage.security import SecurityManager
-from ragify.storage.privacy import PrivacyManager
-from ragify.storage.compliance import ComplianceManager
-from ragify.models import PrivacyLevel
+from src.ragify.storage.security import SecurityManager
+from src.ragify.storage.privacy import PrivacyManager
+from src.ragify.storage.compliance import ComplianceManager
+from src.ragify.models import PrivacyLevel
 
 
 async def demo_security_features():
@@ -181,7 +181,7 @@ async def demo_privacy_features():
         print("\n2️⃣ PRIVACY CONTROLS")
         print("-" * 30)
         
-        from ragify.models import Context, ContextChunk, ContextSource
+        from src.ragify.models import Context, ContextChunk, ContextSource
         
         # Create test context
         test_chunks = [
