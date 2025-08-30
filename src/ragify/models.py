@@ -148,6 +148,17 @@ class Context(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
     fusion_metadata: Optional[FusionMetadata] = None
 
+    @field_validator('chunks', mode='before')
+    @classmethod
+    def validate_chunks(cls, v):
+        """Ensure chunks is always a list."""
+        if v is None:
+            return []
+        if isinstance(v, (list, tuple)):
+            return list(v)
+        # If it's a single chunk, wrap it in a list
+        return [v]
+
     @property
     def sources(self) -> List[ContextSource]:
         """Get unique sources from chunks."""

@@ -121,15 +121,32 @@ class VectorDatabase:
         self._check_availability()
     
     def _check_availability(self) -> None:
-        """Check if the required vector database library is available."""
-        if self.db_type == 'chroma' and not CHROMADB_AVAILABLE:
-            raise VectorDBError("initialization", "ChromaDB not available. Install with: pip install chromadb")
-        elif self.db_type == 'pinecone' and not PINECONE_AVAILABLE:
-            raise VectorDBError("initialization", "Pinecone not available. Install with: pip install pinecone-client")
-        elif self.db_type == 'weaviate' and not WEAVIATE_AVAILABLE:
-            raise VectorDBError("initialization", "Weaviate not available. Install with: pip install weaviate-client")
-        elif self.db_type == 'faiss' and not FAISS_AVAILABLE:
-            raise VectorDBError("initialization", "FAISS not available. Install with: pip install faiss-cpu")
+        """Check if the required database client is available."""
+        if self.db_type == "chroma":
+            try:
+                import chromadb
+            except ImportError:
+                raise VectorDBError("initialization", "ChromaDB not available. Install with: pip install chromadb")
+        elif self.db_type == "faiss":
+            try:
+                import faiss
+            except ImportError:
+                raise VectorDBError("initialization", "FAISS not available. Install with: pip install faiss-cpu")
+        elif self.db_type == "pinecone":
+            try:
+                import pinecone
+            except ImportError:
+                raise VectorDBError("initialization", "Pinecone not available. Install with: pip install pinecone-client")
+        elif self.db_type == "weaviate":
+            try:
+                import weaviate
+            except ImportError:
+                raise VectorDBError("initialization", "Weaviate not available. Install with: pip install weaviate-client")
+        elif self.db_type == "memory":
+            # Memory database is always available
+            pass
+        else:
+            raise VectorDBError("initialization", f"Unsupported database type: {self.db_type}")
     
     async def initialize(self) -> None:
         """Initialize the vector database (alias for connect)."""
@@ -528,20 +545,17 @@ class VectorDatabase:
             
             api_key, index_name = self.connection_string.split(':', 1)
             
-            # Initialize Pinecone with new API
-            self.vector_client = pinecone.Pinecone(api_key=api_key)
-            
-            # Get or create index
+            # Try new Pinecone API first (v2+)
             try:
+                self.vector_client = pinecone.Pinecone(api_key=api_key)
                 self.index = self.vector_client.Index(index_name)
-            except Exception:
-                # Create index if it doesn't exist
-                self.vector_client.create_index(
-                    name=index_name,
-                    dimension=self.config['dimension'],
-                    metric=self.config['metric']
-                )
-                self.index = self.vector_client.Index(index_name)
+            except AttributeError:
+                # Fallback to old Pinecone API (v1)
+                try:
+                    pinecone.init(api_key=api_key, environment=self.config.get('environment', 'us-west1-gcp'))
+                    self.index = pinecone.Index(index_name)
+                except Exception as e:
+                    raise VectorDBError("pinecone_init", f"Failed to initialize Pinecone with old API: {e}")
             
         except Exception as e:
             raise VectorDBError("pinecone_init", f"Failed to initialize Pinecone: {e}")

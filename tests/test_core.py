@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch, Mock
 from uuid import uuid4
 from datetime import datetime, timezone
 
-from ragify import ContextOrchestrator
+from src.ragify.core import ContextOrchestrator
 from src.ragify.models import (
     PrivacyLevel, SourceType, ContextRequest, ContextResponse, 
     Context, ContextChunk, ContextSource, RelevanceScore,
@@ -863,8 +863,8 @@ class TestErrorHandling:
         with pytest.raises(ConfigurationError):
             # This should raise a ConfigurationError due to invalid config
             orchestrator = ContextOrchestrator(
-                vector_db_url="invalid://url",
-                cache_url="invalid://url"
+                vector_db_url="invalid://",
+                cache_url="memory://"
             )
             # The error should occur during component initialization
     
