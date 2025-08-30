@@ -194,7 +194,7 @@ class ContextScoringEngine:
             if self.embedding_model:
                 try:
                     query_embedding = await self._get_embedding(query)
-                    chunk_embeddings = await self._get_embeddings([chunk.content for chunk in chunks])
+                    chunk_embeddings = await self._get_embeddings([c.content for c in chunks])
                 except Exception as e:
                     self.logger.warning(f"Embedding generation failed, falling back to keyword-based scoring: {e}")
                     query_embedding = None

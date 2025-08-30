@@ -6,33 +6,6 @@
   <component name="ChangeListManager">
     <list default="true" id="90fe85d2-ef2a-48b6-aa64-1563ad4f3ee2" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/examples/README_DEMO.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/examples/api_database_integrations_demo.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/examples/basic_usage.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/examples/cache_management_demo.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/examples/document_processing_demo.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/examples/intelligent_fusion_demo.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/examples/multi_factor_scoring_demo.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/examples/performance_optimization_demo.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/examples/privacy_management_demo.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/examples/rag_chat_assistant/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/examples/rag_chat_assistant/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/examples/realtime_sync_demo.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/examples/storage_engine_demo.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/examples/test_concurrent_processing.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/examples/updates_engine_demo.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/examples/vector_db_demo.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ragify/engines/scoring.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ragify/engines/scoring.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ragify/engines/storage.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ragify/engines/storage.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ragify/engines/updates.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ragify/engines/updates.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ragify/exceptions.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ragify/exceptions.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ragify/sources/api.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ragify/sources/api.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ragify/sources/database.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ragify/sources/database.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ragify/sources/document.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ragify/sources/document.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ragify/sources/realtime.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ragify/sources/realtime.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ragify/storage/cache.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ragify/storage/cache.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ragify/storage/privacy.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ragify/storage/privacy.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ragify/storage/vector_db.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ragify/storage/vector_db.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -88,5 +61,16 @@
       <updated>1756452620561</updated>
     </task>
     <servers />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
   </component>
 </project>

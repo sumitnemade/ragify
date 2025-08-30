@@ -59,7 +59,17 @@ class SecurityManager:
         
         # Initialize encryption
         self.encryption_key = encryption_key or self._generate_encryption_key()
-        self.fernet = Fernet(self.encryption_key.encode() if isinstance(self.encryption_key, str) else self.encryption_key)
+        if isinstance(self.encryption_key, str):
+            # If it's a string, try to decode it as base64
+            try:
+                key_bytes = base64.urlsafe_b64decode(self.encryption_key + '==')
+                self.fernet = Fernet(key_bytes)
+            except Exception:
+                # If that fails, generate a new key
+                self.encryption_key = self._generate_encryption_key()
+                self.fernet = Fernet(self.encryption_key)
+        else:
+            self.fernet = Fernet(self.encryption_key)
         
         # Initialize asymmetric encryption
         self.private_key = None
