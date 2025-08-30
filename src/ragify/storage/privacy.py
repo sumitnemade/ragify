@@ -16,6 +16,9 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 import bcrypt
 
+# Import security manager
+from .security import SecurityManager
+
 from ..models import Context, PrivacyLevel
 from ..exceptions import PrivacyViolationError
 
@@ -28,18 +31,25 @@ class PrivacyManager:
     compliance with privacy regulations.
     """
     
-    def __init__(self, default_privacy_level: Optional[PrivacyLevel] = None, encryption_key: Optional[str] = None):
+    def __init__(self, default_privacy_level: Optional[PrivacyLevel] = None, encryption_key: Optional[str] = None, security_level: str = "standard"):
         """
         Initialize the privacy manager.
         
         Args:
             default_privacy_level: Default privacy level for operations (defaults to PRIVATE)
             encryption_key: Optional encryption key (will generate if not provided)
+            security_level: Security level for the security manager
         """
         self.default_privacy_level = default_privacy_level or PrivacyLevel.PRIVATE
         self.logger = structlog.get_logger(__name__)
         
-        # Initialize encryption
+        # Initialize security manager
+        self.security_manager = SecurityManager(
+            encryption_key=encryption_key,
+            security_level=security_level
+        )
+        
+        # Initialize encryption (legacy support)
         self.encryption_key = encryption_key or self._generate_encryption_key()
         self.fernet = Fernet(self.encryption_key)
         
@@ -415,6 +425,99 @@ class PrivacyManager:
         except Exception as e:
             self.logger.error(f"Failed to generate privacy report: {e}")
             return {}
+    
+    async def encrypt_with_security_manager(self, data: str, encryption_type: str = "symmetric") -> str:
+        """
+        Encrypt data using the security manager.
+        
+        Args:
+            data: Data to encrypt
+            encryption_type: Type of encryption (symmetric, asymmetric, hybrid)
+            
+        Returns:
+            Encrypted data
+        """
+        try:
+            return await self.security_manager.encrypt_data(data, encryption_type)
+        except Exception as e:
+            self.logger.error(f"Failed to encrypt with security manager: {e}")
+            # Fallback to legacy encryption
+            return await self.encrypt_content(data)
+    
+    async def decrypt_with_security_manager(self, encrypted_data: str, encryption_type: str = "symmetric") -> str:
+        """
+        Decrypt data using the security manager.
+        
+        Args:
+            encrypted_data: Encrypted data to decrypt
+            encryption_type: Type of encryption used
+            
+        Returns:
+            Decrypted data
+        """
+        try:
+            return await self.security_manager.decrypt_data(encrypted_data, encryption_type)
+        except Exception as e:
+            self.logger.error(f"Failed to decrypt with security manager: {e}")
+            # Fallback to legacy decryption
+            return await self.decrypt_content(encrypted_data)
+    
+    async def check_user_permission(self, user_id: str, resource: str, action: str) -> bool:
+        """
+        Check if user has permission to perform action on resource.
+        
+        Args:
+            user_id: User ID
+            resource: Resource being accessed
+            action: Action being performed
+            
+        Returns:
+            True if permission granted, False otherwise
+        """
+        try:
+            return await self.security_manager.check_permission(user_id, resource, action)
+        except Exception as e:
+            self.logger.error(f"Failed to check user permission: {e}")
+            return False
+    
+    async def generate_user_token(self, user_id: str, role: str, permissions: List[str]) -> str:
+        """
+        Generate access token for user.
+        
+        Args:
+            user_id: User ID
+            role: User role
+            permissions: List of permissions
+            
+        Returns:
+            Access token
+        """
+        try:
+            return await self.security_manager.generate_access_token(user_id, role, permissions)
+        except Exception as e:
+            self.logger.error(f"Failed to generate user token: {e}")
+            raise
+    
+    async def get_security_report(self) -> Dict[str, Any]:
+        """
+        Get security report from security manager.
+        
+        Returns:
+            Security report
+        """
+        try:
+            return await self.security_manager.get_security_report()
+        except Exception as e:
+            self.logger.error(f"Failed to get security report: {e}")
+            return {}
+    
+    async def close(self) -> None:
+        """Close privacy manager and security manager."""
+        try:
+            await self.security_manager.close()
+            self.logger.info("Privacy manager closed successfully")
+        except Exception as e:
+            self.logger.error(f"Error closing privacy manager: {e}")
 
     async def filter_by_privacy(
         self,

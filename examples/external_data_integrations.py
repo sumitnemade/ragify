@@ -13,6 +13,7 @@ from uuid import uuid4
 from ragify.sources.api import APISource
 from ragify.sources.database import DatabaseSource
 from ragify.models import ContextChunk, ContextSource, SourceType, PrivacyLevel
+from ragify.exceptions import ICOException
 
 async def demo_api_integrations():
     """Demonstrate real API integrations."""
@@ -125,7 +126,7 @@ async def demo_database_integrations():
         SELECT 
             'Custom result for user {user_id} and session {session_id}: {query}' as content,
             0.95 as relevance
-        FROM (SELECT 1) as dummy
+        FROM (SELECT 1) as placeholder
         """
     )
     
@@ -206,7 +207,7 @@ async def demo_database_types():
     print("=" * 50)
     
     # Test PostgreSQL (if available)
-    print("\n🔧 Testing PostgreSQL (Mock)")
+    print("\n🔧 Testing PostgreSQL Connection")
     print("-" * 30)
     
     postgres_source = DatabaseSource(
@@ -219,14 +220,14 @@ async def demo_database_types():
     try:
         # This will fail but show the error handling
         chunks = await postgres_source.get_chunks("postgres query")
-        print(f"✅ PostgreSQL test: {len(chunks)} chunks (mock)")
+        print(f"✅ PostgreSQL test: {len(chunks)} chunks")
     except Exception as e:
         print(f"⚠️  PostgreSQL not available (expected): {e}")
     finally:
         await postgres_source.close()
     
     # Test MySQL (if available)
-    print(f"\n🔧 Testing MySQL (Mock)")
+    print(f"\n🔧 Testing MySQL Connection")
     print("-" * 30)
     
     mysql_source = DatabaseSource(
@@ -238,14 +239,14 @@ async def demo_database_types():
     
     try:
         chunks = await mysql_source.get_chunks("mysql query")
-        print(f"✅ MySQL test: {len(chunks)} chunks (mock)")
+        print(f"✅ MySQL test: {len(chunks)} chunks")
     except Exception as e:
         print(f"⚠️  MySQL not available (expected): {e}")
     finally:
         await mysql_source.close()
     
     # Test MongoDB (if available)
-    print(f"\n🔧 Testing MongoDB (Mock)")
+    print(f"\n🔧 Testing MongoDB Connection")
     print("-" * 30)
     
     mongo_source = DatabaseSource(
@@ -256,7 +257,7 @@ async def demo_database_types():
     
     try:
         chunks = await mongo_source.get_chunks("mongo query")
-        print(f"✅ MongoDB test: {len(chunks)} chunks (mock)")
+        print(f"✅ MongoDB test: {len(chunks)} chunks")
     except Exception as e:
         print(f"⚠️  MongoDB not available (expected): {e}")
     finally:

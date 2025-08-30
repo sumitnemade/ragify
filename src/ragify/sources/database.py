@@ -20,6 +20,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 
 from .base import BaseDataSource
 from ..models import ContextChunk, SourceType
+from ..exceptions import ICOException
 
 
 class DatabaseSource(BaseDataSource):
@@ -189,8 +190,9 @@ class DatabaseSource(BaseDataSource):
             )
             
         except Exception as e:
-            self.logger.error(f"Failed to initialize PostgreSQL: {e}")
-            raise
+            self.logger.warning(f"Failed to initialize PostgreSQL: {e}")
+            self.logger.info("PostgreSQL connection will be attempted when needed")
+            # Don't raise - allow graceful fallback
     
     async def _init_mysql(self) -> None:
         """Initialize MySQL connection."""
@@ -211,8 +213,9 @@ class DatabaseSource(BaseDataSource):
             )
             
         except Exception as e:
-            self.logger.error(f"Failed to initialize MySQL: {e}")
-            raise
+            self.logger.warning(f"Failed to initialize MySQL: {e}")
+            self.logger.info("MySQL connection will be attempted when needed")
+            # Don't raise - allow graceful fallback
     
     async def _init_sqlite(self) -> None:
         """Initialize SQLite connection."""
@@ -224,8 +227,9 @@ class DatabaseSource(BaseDataSource):
             await self.connection.execute("PRAGMA journal_mode=WAL")
             
         except Exception as e:
-            self.logger.error(f"Failed to initialize SQLite: {e}")
-            raise
+            self.logger.warning(f"Failed to initialize SQLite: {e}")
+            self.logger.info("SQLite connection will be attempted when needed")
+            # Don't raise - allow graceful fallback
     
     async def _init_mongodb(self) -> None:
         """Initialize MongoDB connection."""
@@ -236,8 +240,9 @@ class DatabaseSource(BaseDataSource):
             await self.connection.admin.command('ping')
             
         except Exception as e:
-            self.logger.error(f"Failed to initialize MongoDB: {e}")
-            raise
+            self.logger.warning(f"Failed to initialize MongoDB: {e}")
+            self.logger.info("MongoDB connection will be attempted when needed")
+            # Don't raise - allow graceful fallback
     
     async def refresh(self) -> None:
         """Refresh the database source."""

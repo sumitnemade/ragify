@@ -118,8 +118,13 @@ class ContextScoringEngine:
             self.logger.warning(f"Embedding model dependencies not available: {e}")
             self.logger.info("Semantic similarity scoring will be disabled")
         except Exception as e:
-            self.logger.warning(f"Failed to load embedding model: {e}")
-            self.logger.info("Semantic similarity scoring will be disabled")
+            # Handle specific huggingface_hub compatibility issues
+            if "split_torch_state_dict_into_shards" in str(e):
+                self.logger.warning("HuggingFace Hub compatibility issue detected")
+                self.logger.info("Semantic similarity scoring will be disabled")
+            else:
+                self.logger.warning(f"Failed to load embedding model: {e}")
+                self.logger.info("Semantic similarity scoring will be disabled")
         
         if self.embedding_model is None:
             self.logger.info("Using fallback scoring methods (keyword-based only)")
@@ -182,9 +187,18 @@ class ContextScoringEngine:
         self.logger.info(f"Scoring {len(chunks)} chunks for query: {query}")
         
         try:
-            # Generate embeddings
-            query_embedding = await self._get_embedding(query)
-            chunk_embeddings = await self._get_embeddings([chunk.content for chunk in chunks])
+            # Generate embeddings (if available)
+            query_embedding = None
+            chunk_embeddings = None
+            
+            if self.embedding_model:
+                try:
+                    query_embedding = await self._get_embedding(query)
+                    chunk_embeddings = await self._get_embeddings([chunk.content for chunk in chunks])
+                except Exception as e:
+                    self.logger.warning(f"Embedding generation failed, falling back to keyword-based scoring: {e}")
+                    query_embedding = None
+                    chunk_embeddings = None
             
             # Score each chunk
             scored_chunks = []
@@ -242,9 +256,15 @@ class ContextScoringEngine:
         
         # Semantic similarity
         if query_embedding and chunk_embedding:
-            scores['semantic_similarity'] = await self._calculate_semantic_similarity(
-                query_embedding, chunk_embedding
-            )
+            try:
+                scores['semantic_similarity'] = await self._calculate_semantic_similarity(
+                    query_embedding, chunk_embedding
+                )
+            except Exception as e:
+                self.logger.warning(f"Semantic similarity calculation failed: {e}")
+                scores['semantic_similarity'] = 0.5  # Fallback score
+        else:
+            scores['semantic_similarity'] = 0.5  # Default score when embeddings unavailable
         
         # Keyword overlap
         scores['keyword_overlap'] = await self._calculate_keyword_overlap(query, chunk.content)

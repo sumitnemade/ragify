@@ -532,11 +532,11 @@ class ContextUpdatesEngine:
             
             # Count updates by time period
             updates_today = sum(1 for ctx in self._context_cache.values() 
-                              if ctx.get('last_updated', today) == today)
+                              if hasattr(ctx, 'last_updated') and ctx.last_updated == today)
             updates_this_week = sum(1 for ctx in self._context_cache.values() 
-                                  if ctx.get('last_updated', week_ago) >= week_ago)
+                                  if hasattr(ctx, 'last_updated') and ctx.last_updated >= week_ago)
             updates_this_month = sum(1 for ctx in self._context_cache.values() 
-                                   if ctx.get('last_updated', month_ago) >= month_ago)
+                                   if hasattr(ctx, 'last_updated') and ctx.last_updated >= month_ago)
             
             # Calculate processing rate based on actual data
             processing_rate = len(self._context_cache) / max(1, len(self.background_tasks))

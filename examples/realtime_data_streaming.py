@@ -12,6 +12,7 @@ from datetime import datetime
 from ragify.sources.realtime import RealtimeSource
 from ragify.models import SourceType, PrivacyLevel
 from ragify.core import ContextOrchestrator
+from ragify.exceptions import ICOException
 
 async def demo_websocket_sync():
     """Demonstrate WebSocket real-time synchronization."""
@@ -200,36 +201,36 @@ async def demo_redis_sync():
         await redis_source.close()
         print(f"🔌 Redis connection closed")
 
-async def demo_mock_sync():
-    """Demonstrate mock real-time synchronization (always works)."""
+async def demo_websocket_sync():
+    """Demonstrate actual WebSocket real-time synchronization."""
     
-    print(f"\n🎭 Mock Real-time Synchronization Demo")
+    print(f"\n🌐 WebSocket Real-time Synchronization Demo")
     print("=" * 50)
     
-    # Initialize mock real-time source
-    mock_source = RealtimeSource(
-        name="mock_demo",
+    # Initialize WebSocket real-time source
+    websocket_source = RealtimeSource(
+        name="websocket_demo",
         source_type=SourceType.REALTIME,
-        url="mock://localhost",
-        connection_type="mock",
+        url="ws://echo.websocket.org",
+        connection_type="websocket",
         subscription_topics=["demo/topic"]
     )
     
-    print(f"📡 Mock source configured:")
-    print(f"   - URL: {mock_source.url}")
-    print(f"   - Connection type: {mock_source.connection_type}")
-    print(f"   - Topics: {mock_source.subscription_topics}")
+    print(f"📡 WebSocket source configured:")
+    print(f"   - URL: {websocket_source.url}")
+    print(f"   - Connection type: {websocket_source.connection_type}")
+    print(f"   - Topics: {websocket_source.subscription_topics}")
     
     try:
         # Test connection
-        print(f"\n🔌 Attempting connection...")
-        await mock_source._connect()
-        print(f"✅ Connection status: {mock_source.is_connected}")
+        print(f"\n🔌 Attempting WebSocket connection...")
+        await websocket_source.connect()
+        print(f"✅ Connection status: {websocket_source.is_connected}")
         
         # Test data retrieval
         print(f"\n📡 Testing real-time data retrieval...")
-        chunks = await mock_source.get_chunks(
-            query="mock data",
+        chunks = await websocket_source.get_chunks(
+            query="websocket data",
             max_chunks=2,
             min_relevance=0.1
         )
@@ -243,20 +244,20 @@ async def demo_mock_sync():
         # Test message publishing
         print(f"\n📤 Testing message publishing...")
         test_message = {
-            'content': 'Hello from Ragify Mock demo!',
+            'content': 'Hello from Ragify WebSocket demo!',
             'timestamp': datetime.utcnow().isoformat(),
             'source': 'ragify_demo'
         }
         
-        await mock_source.publish_message("demo/topic", test_message)
+        await websocket_source.publish_message("demo/topic", test_message)
         print(f"✅ Message published successfully")
         
     except Exception as e:
-        print(f"❌ Mock demo failed: {e}")
+        print(f"❌ WebSocket demo failed: {e}")
     
     finally:
-        await mock_source.close()
-        print(f"🔌 Mock connection closed")
+        await websocket_source.close()
+        print(f"🔌 WebSocket connection closed")
 
 async def demo_callback_system():
     """Demonstrate callback handler system."""
@@ -268,8 +269,8 @@ async def demo_callback_system():
     source = RealtimeSource(
         name="callback_demo",
         source_type=SourceType.REALTIME,
-        url="mock://localhost",
-        connection_type="mock"
+        url="ws://echo.websocket.org",
+        connection_type="websocket"
     )
     
     # Define callback handlers
@@ -329,15 +330,15 @@ async def demo_with_orchestrator():
     )
     
     # Add real-time sources
-    mock_source = RealtimeSource(
+    websocket_source = RealtimeSource(
         name="orchestrator_demo",
         source_type=SourceType.REALTIME,
-        url="mock://localhost",
-        connection_type="mock",
+        url="ws://echo.websocket.org",
+        connection_type="websocket",
         subscription_topics=["orchestrator/topic"]
     )
     
-    orchestrator.add_source(mock_source)
+    orchestrator.add_source(websocket_source)
     print(f"✅ Added real-time source to orchestrator")
     
     # Test context retrieval with real-time data
@@ -367,27 +368,26 @@ async def main():
     print("🎯 Ragify Real-time Synchronization Demo")
     print("=" * 60)
     print("This demo showcases comprehensive real-time synchronization capabilities")
-    print("including WebSocket, MQTT, Redis, and mock connections.\n")
+    print("including WebSocket, MQTT, and Redis connections.\n")
     
     # Demo different real-time sources
-    await demo_mock_sync()  # Always works
+    await demo_websocket_sync()  # WebSocket demo
     await demo_callback_system()
     await demo_with_orchestrator()
     
     # Demo external services (may fail if not available)
-    await demo_websocket_sync()
     await demo_mqtt_sync()
     await demo_redis_sync()
     
     print(f"\n🎉 Complete real-time synchronization demo finished!")
     print(f"\n💡 Key Features Demonstrated:")
-    print(f"   ✅ Multiple connection types (WebSocket, MQTT, Redis, Mock)")
+    print(f"   ✅ Multiple connection types (WebSocket, MQTT, Redis)")
     print(f"   ✅ Real-time data retrieval and processing")
     print(f"   ✅ Message publishing capabilities")
     print(f"   ✅ Callback handler system")
     print(f"   ✅ Integration with Context Orchestrator")
     print(f"   ✅ Connection management and error handling")
-    print(f"   ✅ Graceful fallback to mock mode")
+    print(f"   ✅ Graceful error handling and fallbacks")
     print(f"\n📚 Usage Examples:")
     print(f"   # WebSocket connection")
     print(f"   source = RealtimeSource(url='ws://server:port', connection_type='websocket')")
@@ -395,8 +395,8 @@ async def main():
     print(f"   source = RealtimeSource(url='mqtt://broker:port', connection_type='mqtt')")
     print(f"   # Redis connection")
     print(f"   source = RealtimeSource(url='redis://server:port', connection_type='redis')")
-    print(f"   # Mock connection (for testing)")
-    print(f"   source = RealtimeSource(url='mock://localhost', connection_type='mock')")
+    print(f"   # Error handling and fallbacks")
+    print(f"   source = RealtimeSource(url='ws://localhost:8080', connection_type='websocket')")
 
 if __name__ == "__main__":
     asyncio.run(main())

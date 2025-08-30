@@ -142,3 +142,51 @@ class AnalyticsError(ICOException):
     def __init__(self, operation: str, error: str):
         message = f"Analytics {operation} failed: {error}"
         super().__init__(message, error_code="ANALYTICS_ERROR")
+
+
+class SecurityViolationError(ICOException):
+    """Raised when security rules are violated."""
+    
+    def __init__(self, operation: str, security_type: str, details: str):
+        message = f"Security violation in {operation} ({security_type}): {details}"
+        super().__init__(message, error_code="SECURITY_VIOLATION")
+
+
+class AccessDeniedError(ICOException):
+    """Raised when access is denied."""
+    
+    def __init__(self, user_id: str, resource: str, action: str, reason: str = "Insufficient permissions"):
+        message = f"Access denied for user '{user_id}' to '{resource}' for action '{action}': {reason}"
+        super().__init__(message, error_code="ACCESS_DENIED")
+
+
+class EncryptionError(ICOException):
+    """Raised when encryption/decryption operations fail."""
+    
+    def __init__(self, operation: str, encryption_type: str, error: str):
+        message = f"Encryption {operation} failed ({encryption_type}): {error}"
+        super().__init__(message, error_code="ENCRYPTION_ERROR")
+
+
+class AuthenticationError(ICOException):
+    """Raised when authentication fails."""
+    
+    def __init__(self, user_id: str, reason: str):
+        message = f"Authentication failed for user '{user_id}': {reason}"
+        super().__init__(message, error_code="AUTHENTICATION_ERROR")
+
+
+class AuthorizationError(ICOException):
+    """Raised when authorization fails."""
+    
+    def __init__(self, user_id: str, resource: str, action: str):
+        message = f"Authorization failed for user '{user_id}' to '{resource}' for action '{action}'"
+        super().__init__(message, error_code="AUTHORIZATION_ERROR")
+
+
+class ComplianceError(ICOException):
+    """Raised when compliance requirements are not met."""
+    
+    def __init__(self, operation: str, framework: str, details: str):
+        message = f"Compliance violation in {operation} for {framework}: {details}"
+        super().__init__(message, error_code="COMPLIANCE_ERROR")

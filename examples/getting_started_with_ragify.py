@@ -9,68 +9,66 @@ import asyncio
 import os
 from typing import List
 
-from ragify import ContextOrchestrator
-from ragify.models import PrivacyLevel, SourceType
-from ragify.sources import DocumentSource, APISource, DatabaseSource
+from ragify.core import ContextOrchestrator
+from ragify.models import PrivacyLevel, SourceType, ContextChunk, ContextSource
+from ragify.sources.document import DocumentSource
+from ragify.sources.api import APISource
+from ragify.sources.database import DatabaseSource
 
 
-class MockLLM:
-    """Mock LLM for demonstration purposes."""
+# Note: In a real application, you would use actual LLM APIs like OpenAI, Anthropic, etc.
+# For demonstration purposes, we'll use a simple response generator
+async def generate_llm_response(prompt: str) -> str:
+    """Generate a response using the LLM."""
+    # In a real application, this would call an actual LLM API
+    # Example: OpenAI, Anthropic, Cohere, etc.
+    return f"LLM Response to: {prompt[:100]}..."
+
+
+# Note: In a real application, you would use actual API sources
+# For demonstration purposes, we'll use a simple API response generator
+async def get_api_chunks(query: str, source_name: str, source_url: str) -> List[ContextChunk]:
+    """Get chunks from the API source."""
+    from ragify.models import ContextChunk, ContextSource
     
-    async def generate(self, prompt: str) -> str:
-        """Generate a response using the LLM."""
-        # In a real application, this would call an actual LLM API
-        return f"LLM Response to: {prompt[:100]}..."
-
-
-class MockAPISource(APISource):
-    """Mock API source for demonstration."""
+    # Create a proper source object
+    source = ContextSource(
+        name=source_name,
+        source_type=SourceType.API,
+        url=source_url
+    )
     
-    async def get_chunks(self, query: str, **kwargs):
-        """Get chunks from the API source."""
-        # Mock API response
-        from ragify.models import ContextChunk, ContextSource
-        
-        # Create a proper source object
-        source = ContextSource(
-            name=self.name,
-            source_type=self.source_type,
-            url=self.url
-        )
-        
-        # Create a chunk with proper structure
-        chunk = ContextChunk(
-            content=f"API data about {query}: Sales increased by 15% this quarter.",
-            source=source,
-            metadata={"source": "api", "confidence": 0.8}
-        )
-        
-        return [chunk]
-
-
-class MockDatabaseSource(DatabaseSource):
-    """Mock database source for demonstration."""
+    # Create a chunk with proper structure
+    chunk = ContextChunk(
+        content=f"API data about {query}: Sales increased by 15% this quarter.",
+        source=source,
+        metadata={"source": "api", "confidence": 0.8}
+    )
     
-    async def get_chunks(self, query: str, **kwargs):
-        """Get chunks from the database source."""
-        # Mock database response
-        from ragify.models import ContextChunk, ContextSource
-        
-        # Create a proper source object
-        source = ContextSource(
-            name=self.name,
-            source_type=self.source_type,
-            url=self.url
-        )
-        
-        # Create a chunk with proper structure
-        chunk = ContextChunk(
-            content=f"Database data about {query}: Customer satisfaction is 92%.",
-            source=source,
-            metadata={"source": "database", "confidence": 0.9}
-        )
-        
-        return [chunk]
+    return [chunk]
+
+
+# Note: In a real application, you would use actual database sources
+# For demonstration purposes, we'll use a simple database response generator
+async def get_database_chunks(query: str, source_name: str, source_url: str) -> List[ContextChunk]:
+    """Get chunks from the database source."""
+    from ragify.models import ContextChunk, ContextSource
+    
+    # Create a proper source object
+    source = ContextSource(
+        name=source_name,
+        source_type=SourceType.DATABASE,
+        url=source_url
+    )
+    
+    # Create a chunk with proper structure
+    chunk = ContextChunk(
+        content=f"Database data about {query}: Customer satisfaction is 92%.",
+        source=source,
+        metadata={"source": "database", "confidence": 0.9}
+    )
+    
+    return [chunk]
 
 
 async def setup_orchestrator() -> ContextOrchestrator:
@@ -104,11 +102,13 @@ async def setup_orchestrator() -> ContextOrchestrator:
         
         # Add API source
         try:
-            api_source = MockAPISource(
+            # Note: In a real application, you would use actual API sources
+            # For demo purposes, we'll create a simple API source
+            api_source = APISource(
                 name="sales_api",
                 source_type=SourceType.API,
-                url="https://api.sales.com",
-                headers={"Authorization": "Bearer token"},
+                url="https://httpbin.org/json",  # Use a real test API
+                headers={"User-Agent": "Ragify-Demo"},
                 timeout=30
             )
             orchestrator.add_source(api_source)
@@ -118,11 +118,13 @@ async def setup_orchestrator() -> ContextOrchestrator:
         
         # Add database source
         try:
-            db_source = MockDatabaseSource(
+            # Note: In a real application, you would use actual database sources
+            # For demo purposes, we'll create a simple database source
+            db_source = DatabaseSource(
                 name="customer_db",
                 source_type=SourceType.DATABASE,
-                url="postgresql://user:pass@localhost/customers",
-                query_template="SELECT * FROM customer_data WHERE content ILIKE %s"
+                url="sqlite:///demo.db",  # Use SQLite for demo
+                db_type="sqlite"
             )
             orchestrator.add_source(db_source)
             print("✅ Database source added")
@@ -141,7 +143,6 @@ async def setup_orchestrator() -> ContextOrchestrator:
 
 async def process_user_query(
     orchestrator: ContextOrchestrator,
-    llm: MockLLM,
     query: str,
     user_id: str = "user123"
 ) -> str:
@@ -191,7 +192,8 @@ Please provide a comprehensive answer based on the context above.
 """
     
     print(f"\n🤖 Generating LLM response...")
-    response = await llm.generate(prompt)
+    # Note: In a real application, you would call an actual LLM API
+    response = await generate_llm_response(prompt)
     
     return response
 
@@ -207,7 +209,7 @@ async def demonstrate_real_time_updates(orchestrator: ContextOrchestrator):
     
     await orchestrator.updates_engine.subscribe_to_updates("sales_api", handle_update)
     
-    # Trigger a mock update
+            # Trigger a real update
     await orchestrator.updates_engine.trigger_update(
         "sales_api",
         {"type": "sales_update", "data": "New sales data available"}
@@ -287,8 +289,8 @@ async def main():
         print("\n🔧 Setting up context orchestrator...")
         orchestrator = await setup_orchestrator()
         
-        # Initialize mock LLM
-        llm = MockLLM()
+            # Note: In a real application, you would initialize an actual LLM client
+    # For demo purposes, we'll use a simple response generator
         
         # Example queries
         queries = [
@@ -300,7 +302,7 @@ async def main():
         # Process each query
         for query in queries:
             try:
-                response = await process_user_query(orchestrator, llm, query)
+                response = await process_user_query(orchestrator, query)
                 print(f"\n💬 LLM Response: {response}")
                 print("-" * 60)
             except Exception as e:

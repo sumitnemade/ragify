@@ -37,6 +37,7 @@ import redis.asyncio as redis
 
 from .base import BaseDataSource
 from ..models import ContextChunk, SourceType
+from ..exceptions import ICOException
 
 
 class RealtimeSource(BaseDataSource):
@@ -279,7 +280,8 @@ class RealtimeSource(BaseDataSource):
                 return []
                 
         except Exception as e:
-            self.logger.error(f"WebSocket data retrieval failed: {e}")
+            self.logger.warning(f"WebSocket data retrieval failed: {e}")
+            self.logger.info("Returning empty data for graceful fallback")
             return []
     
     async def _get_mqtt_data(

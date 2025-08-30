@@ -210,7 +210,7 @@ async def demo_compliance_features():
     
     privacy_manager = PrivacyManager()
     
-    # Simulate data access events
+    # Create sample data access events
     access_events = [
         {
             "user_id": "user123",

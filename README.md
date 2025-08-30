@@ -76,11 +76,11 @@ A Python framework that combines data from multiple sources (docs, APIs, databas
 
 ## 🌟 Featured Example: RAG Chat Assistant
 
-**See Ragify in action!** Check out our complete RAG-based Chat Assistant that demonstrates the full power of the framework:
+**See Ragify in action!** Check out our RAG-based Chat Assistant that demonstrates the framework's capabilities:
 
 ### 🤖 [RAG Chat Assistant](examples/rag_chat_assistant/)
 
-A production-ready chatbot that showcases:
+A functional chatbot that showcases:
 - **📚 PDF Document Processing** with intelligent chunking
 - **🔍 Vector Search** using FAISS database
 - **🤖 OpenAI Integration** for AI-powered responses
@@ -88,7 +88,7 @@ A production-ready chatbot that showcases:
 - **🧠 Intelligent Context Fusion** and conflict resolution
 - **⚡ Real-time Processing** with async operations
 
-**Perfect for learning Ragify!** This example shows how to build a complete RAG system from scratch using all of Ragify's core features.
+**Great for learning Ragify!** This example shows how to build a RAG system using Ragify's core features.
 
 ## 📦 Setup
 
@@ -153,15 +153,43 @@ context = await orchestrator.get_context(
 - Core framework implemented
 - Test suite included
 - Examples provided
+- **🔐 Security & Privacy**: ✅ **Implemented and tested** (GDPR, HIPAA, SOX features)
 - Not on PyPI yet
+
+## 🔐 **Security & Privacy Features - IMPLEMENTED**
+
+**✅ Features implemented and tested with working examples**
+
+### **Security Manager**
+- **Multi-level Encryption**: AES-256, RSA-2048, Hybrid encryption
+- **Access Control**: Role-based permissions (RBAC)
+- **Security Monitoring**: Real-time alerts and scoring
+- **Key Management**: Automatic rotation and secure storage
+
+### **Privacy Manager**
+- **Data Protection**: Sensitive data detection and anonymization
+- **Privacy Controls**: 4-tier privacy levels with policies
+- **Compliance**: Real-time privacy compliance checking
+- **Integration**: Full security manager integration
+
+### **Compliance Manager**
+- **GDPR**: Data subject management, right to be forgotten
+- **HIPAA**: PHI protection, minimum necessary principle
+- **SOX**: Financial data integrity, audit trails
+- **Multi-framework**: Simultaneous compliance support
+
+**🎯 Demo**: `python examples/security_encryption_and_access_control.py` - See all features in action!
 
 ## 📚 Learn More
 
-- **[RAG Chat Assistant](examples/rag_chat_assistant/)** - Complete production-ready example ⭐
-- [Basic Usage](examples/basic_usage.py)
-- [Conflict Resolution](examples/intelligent_fusion_demo.py)
-- [Vector DB](examples/vector_db_demo.py)
-- [Full Docs](docs/)
+- **[RAG Chat Assistant](examples/rag_chat_assistant/)** - Functional RAG chatbot example ⭐
+- **[Getting Started](examples/getting_started_with_ragify.py)** - Basic RAGify setup and usage
+- **[Document Processing](examples/document_ingestion_and_processing.py)** - Document processing capabilities
+- **[Conflict Resolution](examples/conflict_detection_and_resolution.py)** - Intelligent conflict resolution
+- **[Vector Database Operations](examples/vector_database_operations.py)** - Vector database operations
+- **[Security & Privacy](examples/security_encryption_and_access_control.py)** - Security, encryption & access control
+- **[Examples Index](examples/INDEX.md)** - Quick navigation guide
+- **[Examples README](examples/README_EXAMPLES.md)** - Comprehensive developer guide
 
 ## 🤝 Contribute
 

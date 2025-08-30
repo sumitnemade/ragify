@@ -417,17 +417,24 @@ class VectorDatabase:
     async def _init_chroma_client(self) -> None:
         """Initialize ChromaDB client."""
         try:
+            # Suppress ChromaDB telemetry warnings
+            import os
+            os.environ["ANONYMIZED_TELEMETRY"] = "False"
+            
             if self.connection_string.startswith('/'):
                 # Local path
                 db_path = self.connection_string
-                self.vector_client = chromadb.PersistentClient(path=db_path)
+                self.vector_client = chromadb.PersistentClient(
+                    path=db_path,
+                    settings=Settings(anonymized_telemetry=False)
+                )
             else:
                 # Remote server
                 host, port = self.connection_string.split(':')
                 self.vector_client = chromadb.HttpClient(
                     host=host,
                     port=int(port),
-                    settings=Settings(allow_reset=True)
+                    settings=Settings(allow_reset=True, anonymized_telemetry=False)
                 )
             
             # Create or get collection

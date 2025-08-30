@@ -20,6 +20,7 @@ import hmac
 
 from .base import BaseDataSource
 from ..models import ContextChunk, SourceType
+from ..exceptions import ICOException
 
 
 class APISource(BaseDataSource):

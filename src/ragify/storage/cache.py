@@ -682,8 +682,11 @@ class CacheManager:
         try:
             import gzip
             return gzip.compress(data)
+        except ImportError:
+            self.logger.warning("gzip compression not available, storing uncompressed data")
+            return data  # Return uncompressed data on error
         except Exception as e:
-            self.logger.error(f"Failed to compress data: {e}")
+            self.logger.warning(f"Compression failed, storing uncompressed data: {e}")
             return data  # Return uncompressed data on error
     
     async def _decompress(self, data: bytes) -> bytes:
@@ -691,8 +694,11 @@ class CacheManager:
         try:
             import gzip
             return gzip.decompress(data)
+        except ImportError:
+            self.logger.warning("gzip decompression not available, returning data as-is")
+            return data  # Return data as-is on error
         except Exception as e:
-            self.logger.error(f"Failed to decompress data: {e}")
+            self.logger.warning(f"Decompression failed, returning data as-is: {e}")
             return data  # Return data as-is on error
     
     async def close(self) -> None:

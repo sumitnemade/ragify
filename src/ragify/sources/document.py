@@ -581,10 +581,17 @@ class DocumentSource(BaseDataSource):
         if not text.strip():
             return []
         
+        # Ensure overlap is not larger than chunk size
+        effective_overlap = min(self.overlap, self.chunk_size - 1)
+        
         chunks = []
         start = 0
+        iteration_count = 0
+        max_iterations = len(text) * 2  # Prevent infinite loops
         
-        while start < len(text):
+        while start < len(text) and iteration_count < max_iterations:
+            iteration_count += 1
+            
             end = start + self.chunk_size
             
             # Try to break at sentence boundary
@@ -607,11 +614,17 @@ class DocumentSource(BaseDataSource):
                 chunks.append(chunk_content)
             
             # Move to next chunk with overlap
-            new_start = end - self.overlap
+            new_start = end - effective_overlap
             
             # Prevent infinite loop - ensure we always advance
             if new_start <= start:
                 new_start = start + 1
+                # Additional safety: if we still can't advance, force it
+                if new_start <= start:
+                    new_start = start + self.chunk_size // 2
+                    # Final safety: if overlap is too large, use minimum advance
+                    if new_start <= start:
+                        new_start = start + 1
             
             start = new_start
             
@@ -1145,8 +1158,11 @@ class DocumentSource(BaseDataSource):
         
         # Simple chunking by character count
         start = 0
-        max_iterations = len(content) // max(1, self.chunk_size - self.overlap) + 10  # Safety limit
+        max_iterations = len(content) * 2  # Safety limit
         iteration_count = 0
+        
+        # Ensure overlap is not larger than chunk size
+        effective_overlap = min(self.overlap, self.chunk_size - 1)
         
         while start < len(content) and iteration_count < max_iterations:
             iteration_count += 1
@@ -1182,12 +1198,17 @@ class DocumentSource(BaseDataSource):
                 chunks.append(chunk)
             
             # Move to next chunk with overlap
-            new_start = end - self.overlap
+            new_start = end - effective_overlap
             
             # Prevent infinite loop - ensure we always advance
             if new_start <= start:
-                self.logger.warning(f"Chunking would not advance, forcing advance. start={start}, new_start={new_start}")
                 new_start = start + 1
+                # Additional safety: if we still can't advance, force it
+                if new_start <= start:
+                    new_start = start + self.chunk_size // 2
+                    # Final safety: if overlap is too large, use minimum advance
+                    if new_start <= start:
+                        new_start = start + 1
             
             start = new_start
             

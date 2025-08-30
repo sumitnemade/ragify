@@ -14,7 +14,7 @@ import structlog
 # Cryptography imports
 from cryptography.fernet import Fernet
 
-from ..models import Context, OrchestratorConfig
+from ..models import Context, OrchestratorConfig, PrivacyLevel
 from ..exceptions import ICOException
 
 

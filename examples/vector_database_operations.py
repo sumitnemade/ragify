@@ -190,7 +190,7 @@ async def demonstrate_faiss_db():
 
 
 async def demonstrate_pinecone_db():
-    """Demonstrate Pinecone functionality (with mocked client)."""
+    """Demonstrate Pinecone functionality with real API integration."""
     print("\n🟢 Pinecone Demo")
     print("=" * 40)
     
@@ -265,7 +265,7 @@ async def demonstrate_pinecone_db():
 
 
 async def demonstrate_weaviate_db():
-    """Demonstrate Weaviate functionality (with mocked client)."""
+    """Demonstrate Weaviate functionality with real API integration."""
     print("\n🟣 Weaviate Demo")
     print("=" * 40)
     

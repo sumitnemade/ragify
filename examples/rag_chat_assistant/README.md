@@ -1,6 +1,6 @@
 # 🤖 RAG-based Chat Assistant
 
-A sophisticated Retrieval-Augmented Generation (RAG) chatbot built using the **RAGify** plugin, OpenAI, and Streamlit. This application demonstrates how to build a production-ready RAG system that can process PDF documents and provide intelligent, context-aware responses.
+A sophisticated Retrieval-Augmented Generation (RAG) chatbot built using the **RAGify** plugin, OpenAI, and Streamlit. This application demonstrates how to build a functional RAG system that can process PDF documents and provide intelligent, context-aware responses.
 
 ## 🖼️ Screenshots
 
