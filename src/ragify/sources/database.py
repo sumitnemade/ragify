@@ -316,11 +316,11 @@ class DatabaseSource(BaseDataSource):
             elif self.db_type == "mongodb":
                 return await self._execute_mongodb_query(query, user_id, session_id)
             else:
-                return await self._get_mock_results(query)
+                raise ICOException(f"Unsupported database type: {self.db_type}")
                 
         except Exception as e:
             self.logger.error(f"Database query failed: {e}")
-            return await self._get_mock_results(query)
+            raise ICOException(f"Database query failed: {e}")
     
     async def _execute_postgresql_query(
         self,
@@ -375,11 +375,11 @@ class DatabaseSource(BaseDataSource):
                     return results
             
             else:
-                return await self._get_mock_results(query)
+                raise ICOException("No database connection available")
                 
         except Exception as e:
             self.logger.error(f"PostgreSQL query failed: {e}")
-            return await self._get_mock_results(query)
+            raise ICOException(f"PostgreSQL query failed: {e}")
     
     async def _execute_mysql_query(
         self,
@@ -390,7 +390,7 @@ class DatabaseSource(BaseDataSource):
         """Execute MySQL query."""
         try:
             if not self.connection:
-                return await self._get_mock_results(query)
+                raise ICOException("No MySQL connection available")
             
             # Build SQL query
             sql_query = self._build_sql_query(query, user_id, session_id)
@@ -414,8 +414,7 @@ class DatabaseSource(BaseDataSource):
                 return results
                 
         except Exception as e:
-            self.logger.error(f"MySQL query failed: {e}")
-            return await self._get_mock_results(query)
+            await self._handle_database_failure(query, e)
     
     async def _execute_sqlite_query(
         self,
@@ -426,7 +425,7 @@ class DatabaseSource(BaseDataSource):
         """Execute SQLite query."""
         try:
             if not self.connection:
-                return await self._get_mock_results(query)
+                raise ICOException("No SQLite connection available")
             
             # Build SQL query
             sql_query = self._build_sql_query(query, user_id, session_id)
@@ -449,8 +448,7 @@ class DatabaseSource(BaseDataSource):
                 return results
                 
         except Exception as e:
-            self.logger.error(f"SQLite query failed: {e}")
-            return await self._get_mock_results(query)
+            await self._handle_database_failure(query, e)
     
     async def _execute_mongodb_query(
         self,
@@ -461,7 +459,7 @@ class DatabaseSource(BaseDataSource):
         """Execute MongoDB query."""
         try:
             if not self.connection:
-                return await self._get_mock_results(query)
+                raise ICOException("No MongoDB connection available")
             
             # Get database and collection
             db_name = self.url.split('/')[-1] if '/' in self.url else 'test'
@@ -491,8 +489,7 @@ class DatabaseSource(BaseDataSource):
             return results
             
         except Exception as e:
-            self.logger.error(f"MongoDB query failed: {e}")
-            return await self._get_mock_results(query)
+            await self._handle_database_failure(query, e)
     
     def _build_sql_query(self, query: str, user_id: Optional[str] = None, session_id: Optional[str] = None) -> str:
         """Build SQL query from template."""
@@ -541,66 +538,40 @@ class DatabaseSource(BaseDataSource):
         
         return mongo_query
     
-    async def _get_mock_results(self, query: str) -> List[Dict[str, Any]]:
-        """Get simulated database results when database is unavailable."""
+    async def _handle_database_failure(self, query: str, error: Exception) -> None:
+        """Handle database failure with proper error logging and cleanup."""
+        self.logger.error(f"Database source {self.name} failed for query '{query}': {error}")
+        
+        # Mark source as temporarily unavailable
+        self.last_error = error
+        self.last_error_time = datetime.now()
+        
+        # Clean up connections
+        await self._cleanup_database_connections()
+        
+        # Raise exception for proper error handling upstream
+        raise ICOException(f"Database source {self.name} failed: {error}")
+    
+    async def _cleanup_database_connections(self) -> None:
+        """Clean up database connections."""
         try:
-            # Generate realistic database results based on query
-            current_time = datetime.now()
+            if hasattr(self, 'pool') and self.pool:
+                await self.pool.close()
+                self.pool = None
             
-            # Create dynamic content based on query type
-            if 'user' in query.lower():
-                content = f"Database result for query '{query}': User data from {self.name} - User ID: 12345, Status: Active"
-                relevance = 0.85
-                table_name = 'users'
-            elif 'product' in query.lower() or 'item' in query.lower():
-                content = f"Database result for query '{query}': Product data from {self.name} - SKU: PRD001, Price: $99.99"
-                relevance = 0.8
-                table_name = 'products'
-            elif 'order' in query.lower() or 'transaction' in query.lower():
-                content = f"Database result for query '{query}': Order data from {self.name} - Order ID: ORD789, Total: $299.99"
-                relevance = 0.9
-                table_name = 'orders'
-            elif 'log' in query.lower() or 'event' in query.lower():
-                content = f"Database result for query '{query}': Log data from {self.name} - Event ID: EVT456, Level: INFO"
-                relevance = 0.7
-                table_name = 'logs'
-            else:
-                content = f"Database result for query '{query}': Data from {self.name} - Record ID: 001, Status: Retrieved"
-                relevance = 0.75
-                table_name = 'data'
+            if hasattr(self, 'engine') and self.engine:
+                await self.engine.dispose()
+                self.engine = None
             
-            return [
-                {
-                    'content': content,
-                    'relevance': relevance,
-                    'metadata': {
-                        'source': self.name,
-                        'query': query,
-                        'table': table_name,
-                        'timestamp': current_time.isoformat(),
-                        'result_type': 'simulated',
-                        'database_status': 'unavailable',
-                        'fallback': True
-                    }
-                }
-            ]
-            
+            if hasattr(self, 'connection') and self.connection:
+                if hasattr(self.connection, 'close'):
+                    await self.connection.close()
+                elif hasattr(self.connection, 'aclose'):
+                    await self.connection.aclose()
+                self.connection = None
+                
         except Exception as e:
-            self.logger.error(f"Failed to generate simulated database results: {e}")
-            # Fallback to basic mock results
-            return [
-                {
-                    'content': f"Database result for query '{query}': Sample data from {self.name}",
-                    'relevance': 0.9,
-                    'metadata': {
-                        'source': self.name,
-                        'query': query,
-                        'table': 'sample_table',
-                        'timestamp': datetime.now().isoformat(),
-                        'result_type': 'fallback'
-                    }
-                }
-            ]
+            self.logger.warning(f"Error during database connection cleanup: {e}")
     
     async def _process_database_results(
         self,

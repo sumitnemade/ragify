@@ -172,10 +172,17 @@ async def demo_advanced_features():
             overlap=size // 5
         )
         
-        content = await doc_source._load_single_document(Path("demo_documents/sample.txt"))
-        if content:
-            chunks = await doc_source._chunk_content(content, "demo_documents/sample.txt")
-            print(f"  Chunk size {size}: {len(chunks)} chunks created")
+        content_chunks = await doc_source._load_single_document(Path("demo_documents/sample.txt"))
+        if content_chunks:
+            # Extract the actual text content from the first chunk
+            content = content_chunks[0]['content'] if content_chunks else ""
+            if content:
+                chunks = await doc_source._chunk_content(content, "demo_documents/sample.txt")
+                print(f"  Chunk size {size}: {len(chunks)} chunks created")
+            else:
+                print(f"  Chunk size {size}: No content extracted")
+        else:
+            print(f"  Chunk size {size}: No chunks loaded")
     
     # Test error handling
     print(f"\n🛡️  Testing error handling:")

@@ -5,7 +5,7 @@ Privacy Manager for context data protection and privacy controls.
 import asyncio
 import re
 import base64
-import os
+from pathlib import Path
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 import structlog
@@ -575,20 +575,43 @@ class PrivacyManager:
             Compliance report
         """
         try:
-            # In a real implementation, this would query logs and generate statistics
-            # For demo purposes, return mock data
+            # Generate real compliance report from actual data
+            total_events = 0
+            violations = 0
+            privacy_level_counts = {
+                'public': 0,
+                'private': 0,
+                'enterprise': 0,
+                'restricted': 0
+            }
+            
+            # Count events by privacy level (this would query actual logs in production)
+            # For now, we'll use the access log if available
+            if hasattr(self, 'access_log') and self.access_log:
+                for event in self.access_log:
+                    event_date = event.get('timestamp')
+                    if start_date <= event_date <= end_date:
+                        total_events += 1
+                        privacy_level = event.get('privacy_level', 'private')
+                        if privacy_level in privacy_level_counts:
+                            privacy_level_counts[privacy_level] += 1
+                        
+                        # Check for violations (access denied events)
+                        if event.get('action') == 'access_denied':
+                            violations += 1
+            
+            # Calculate compliance score
+            compliance_score = 100.0
+            if total_events > 0:
+                compliance_score = max(0.0, 100.0 - (violations / total_events) * 100.0)
+            
             return {
-                'total_events': 42,
-                'violations': 0,
-                'compliance_score': 100.0,
+                'total_events': total_events,
+                'violations': violations,
+                'compliance_score': round(compliance_score, 2),
                 'period_start': start_date.isoformat(),
                 'period_end': end_date.isoformat(),
-                'privacy_levels': {
-                    'public': 15,
-                    'private': 20,
-                    'enterprise': 5,
-                    'restricted': 2
-                }
+                'privacy_levels': privacy_level_counts
             }
         except Exception as e:
             self.logger.error(f"Failed to generate compliance report: {e}")

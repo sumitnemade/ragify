@@ -5,23 +5,16 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="90fe85d2-ef2a-48b6-aa64-1563ad4f3ee2" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/PERFORMANCE_OPTIMIZATION_README.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/examples/rag_chat_assistant/uploaded_documents/faq.pdf" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/examples/multi_factor_scoring_demo.py" beforeDir="false" afterPath="$PROJECT_DIR$/examples/multi_factor_scoring_demo.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/examples/updates_engine_demo.py" beforeDir="false" afterPath="$PROJECT_DIR$/examples/updates_engine_demo.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ragify/core.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ragify/core.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ragify/engines/scoring.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ragify/engines/scoring.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/examples/document_processing_demo.py" beforeDir="false" afterPath="$PROJECT_DIR$/examples/document_processing_demo.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ragify/engines/storage.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ragify/engines/storage.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ragify/engines/updates.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ragify/engines/updates.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ragify/models.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ragify/models.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ragify/sources/api.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ragify/sources/api.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ragify/sources/database.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ragify/sources/database.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ragify/sources/document.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ragify/sources/document.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ragify/sources/realtime.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ragify/sources/realtime.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ragify/storage/cache.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ragify/storage/cache.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ragify/storage/privacy.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ragify/storage/privacy.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ragify/storage/vector_db.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ragify/storage/vector_db.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tests/test_core.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_core.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

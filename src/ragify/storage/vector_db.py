@@ -3,7 +3,7 @@ Vector Database for context embedding storage and similarity search.
 """
 
 import asyncio
-import os
+from pathlib import Path
 import json
 import pickle
 import time

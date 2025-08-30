@@ -247,9 +247,9 @@ class APISource(BaseDataSource):
                     delay = self.retry_config['retry_delay'] * (self.retry_config['backoff_factor'] ** attempt)
                     await asyncio.sleep(delay)
                 else:
-                    # All retries failed, return mock data
-                    self.logger.error(f"All API request attempts failed for {self.name}")
-                    return await self._get_mock_response(query)
+                    # All retries failed, handle failure properly
+                    await self._handle_api_failure(query, Exception(f"Max retries ({self.retry_config['max_retries']}) exceeded"))
+                    
     
     async def _ensure_http_client(self) -> None:
         """Ensure HTTP client is initialized."""
@@ -379,71 +379,32 @@ class APISource(BaseDataSource):
         except Exception as e:
             self.logger.error(f"Failed to refresh OAuth2 token: {e}")
     
-    async def _get_mock_response(self, query: str) -> Dict[str, Any]:
-        """Get simulated API response when external API is unavailable."""
+    async def _handle_api_failure(self, query: str, error: Exception) -> None:
+        """Handle API failure with proper error logging and cleanup."""
+        self.logger.error(f"API source {self.name} failed for query '{query}': {error}")
+        
+        # Mark source as temporarily unavailable
+        self.last_error = error
+        self.last_error_time = time.time()
+        
+        # Clean up resources
+        await self._cleanup_http_clients()
+        
+        # Raise exception for proper error handling upstream
+        raise ICOException(f"API source {self.name} failed: {error}")
+    
+    async def _cleanup_http_clients(self) -> None:
+        """Clean up HTTP clients and sessions."""
         try:
-            # Generate realistic API response based on query and source
-            current_time = time.time()
+            if self.httpx_client:
+                await self.httpx_client.aclose()
+                self.httpx_client = None
             
-            # Create dynamic content based on query
-            if 'weather' in query.lower():
-                content = f"API response for query '{query}': Weather data from {self.name} - Temperature: 22°C, Conditions: Sunny"
-                relevance = 0.9
-                data_type = 'weather'
-            elif 'stock' in query.lower() or 'price' in query.lower():
-                content = f"API response for query '{query}': Market data from {self.name} - Price: $150.25, Volume: 1.2M"
-                relevance = 0.85
-                data_type = 'market'
-            elif 'news' in query.lower():
-                content = f"API response for query '{query}': News data from {self.name} - Latest headlines available"
-                relevance = 0.95
-                data_type = 'news'
-            elif 'user' in query.lower() or 'profile' in query.lower():
-                content = f"API response for query '{query}': User data from {self.name} - Profile information available"
-                relevance = 0.8
-                data_type = 'user'
-            else:
-                content = f"API response for query '{query}': Data from {self.name} - Information retrieved successfully"
-                relevance = 0.7
-                data_type = 'general'
-            
-            return {
-                'data': [
-                    {
-                        'content': content,
-                        'relevance': relevance,
-                        'metadata': {
-                            'source': self.name,
-                            'query': query,
-                            'timestamp': current_time,
-                            'data_type': data_type,
-                            'response_type': 'simulated',
-                            'api_status': 'unavailable',
-                            'fallback': True
-                        }
-                    }
-                ],
-                'status': 'success',
-                'message': 'Simulated response - API unavailable'
-            }
-            
+            if self.session:
+                await self.session.close()
+                self.session = None
         except Exception as e:
-            self.logger.error(f"Failed to generate simulated API response: {e}")
-            # Fallback to basic mock response
-            return {
-                'data': [
-                    {
-                        'content': f"API response for query '{query}': Sample data from {self.name}",
-                        'relevance': 0.8,
-                        'metadata': {
-                            'source': self.name,
-                            'query': query,
-                            'timestamp': time.time(),
-                            'response_type': 'fallback'
-                        }
-                    }
-                ]
-            }
+            self.logger.warning(f"Error during HTTP client cleanup: {e}")
     
     async def _process_api_response(
         self,

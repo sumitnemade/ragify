@@ -3,7 +3,6 @@ Document Source for handling document-based data sources.
 """
 
 import asyncio
-import os
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 import structlog

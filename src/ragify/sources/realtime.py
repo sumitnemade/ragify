@@ -227,11 +227,10 @@ class RealtimeSource(BaseDataSource):
                 return await self._get_redis_data(query, user_id, session_id)
             else:
                 self.logger.warning(f"Unsupported connection type: {self.connection_type}")
-                return await self._get_mock_data(query, user_id, session_id)
+                raise ICOException(f"Unsupported connection type: {self.connection_type}")
             
         except Exception as e:
-            self.logger.error(f"Failed to get real-time data: {e}")
-            return await self._get_mock_data(query, user_id, session_id)
+            await self._handle_realtime_failure(query, e, user_id, session_id)
     
     async def _get_websocket_data(
         self,
@@ -426,76 +425,39 @@ class RealtimeSource(BaseDataSource):
             self.logger.error(f"Redis data retrieval failed: {e}")
             return []
     
-    async def _get_mock_data(
-        self,
-        query: str,
-        user_id: Optional[str] = None,
-        session_id: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
-        """Get simulated real-time data when external services are unavailable."""
+    async def _handle_realtime_failure(self, query: str, error: Exception, user_id: Optional[str] = None, session_id: Optional[str] = None) -> None:
+        """Handle real-time data failure with proper error logging and cleanup."""
+        self.logger.error(f"Real-time source {self.name} failed for query '{query}': {error}")
+        
+        # Mark source as temporarily unavailable
+        self.last_error = error
+        self.last_error_time = datetime.now(timezone.utc)
+        
+        # Clean up connections
+        await self._cleanup_connections()
+        
+        # Raise exception for proper error handling upstream
+        raise ICOException(f"Real-time source {self.name} failed: {error}")
+    
+    async def _cleanup_connections(self) -> None:
+        """Clean up all real-time connections."""
         try:
-            # Generate realistic real-time data based on query
-            current_time = datetime.now(timezone.utc)
+            if self.connection:
+                if hasattr(self.connection, 'close'):
+                    await self.connection.close()
+                elif hasattr(self.connection, 'aclose'):
+                    await self.connection.aclose()
+                self.connection = None
             
-            # Create dynamic content based on query and time
-            time_based_content = f"Real-time update at {current_time.strftime('%H:%M:%S')} UTC"
-            
-            # Add query-specific content
-            if 'weather' in query.lower():
-                content = f"{time_based_content}: Weather data for query '{query}' - Temperature: 22°C, Humidity: 65%"
-                relevance = 0.9
-            elif 'stock' in query.lower() or 'price' in query.lower():
-                content = f"{time_based_content}: Market data for query '{query}' - Price: $150.25, Change: +2.3%"
-                relevance = 0.85
-            elif 'news' in query.lower():
-                content = f"{time_based_content}: Breaking news for query '{query}' - Latest updates available"
-                relevance = 0.95
-            elif 'sensor' in query.lower() or 'iot' in query.lower():
-                content = f"{time_based_content}: Sensor data for query '{query}' - Reading: 42.7, Status: Normal"
-                relevance = 0.8
-            else:
-                content = f"{time_based_content}: Live data stream for query '{query}' - Real-time information available"
-                relevance = 0.7
-            
-            # Add user/session context if available
-            if user_id:
-                content += f" (User: {user_id})"
-            if session_id:
-                content += f" (Session: {session_id})"
-            
-            return [
-                {
-                    'content': content,
-                    'relevance': relevance,
-                    'metadata': {
-                        'source': self.name,
-                        'query': query,
-                        'timestamp': current_time.isoformat(),
-                        'is_realtime': True,
-                        'connection_type': 'simulated',
-                        'data_type': 'fallback',
-                        'user_id': user_id,
-                        'session_id': session_id
-                    }
-                }
-            ]
-            
+            # Clear message queue
+            while not self.message_queue.empty():
+                try:
+                    self.message_queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
+                    
         except Exception as e:
-            self.logger.error(f"Failed to generate simulated real-time data: {e}")
-            # Fallback to basic mock data
-            return [
-                {
-                    'content': f"Real-time data for query '{query}': Live data from {self.name}",
-                    'relevance': 0.95,
-                    'metadata': {
-                        'source': self.name,
-                        'query': query,
-                        'timestamp': datetime.now(timezone.utc).isoformat(),
-                        'is_realtime': True,
-                        'connection_type': 'fallback'
-                    }
-                }
-            ]
+            self.logger.warning(f"Error during connection cleanup: {e}")
     
     async def _process_realtime_data(
         self,
