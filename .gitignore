@@ -267,3 +267,6 @@ Thumbs.db
 
 # Cursor IDE
 .cursor/
+
+# Production Readiness Planning - Internal roadmap (not for commit)
+PRODUCTION_READINESS_ROADMAP.md
