@@ -15,6 +15,8 @@ from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import cross_val_score
 import structlog
+import time
+import hashlib
 
 from ..models import ContextChunk, RelevanceScore, OrchestratorConfig
 from ..exceptions import RelevanceScoringError
@@ -88,6 +90,23 @@ class ContextScoringEngine:
         # Historical scoring data for statistical analysis
         self.scoring_history = []
         self.confidence_calibration_data = []
+
+        # Embedding model configuration
+        self.embedding_batch_size = 100 # Batch size for embedding requests
+        self.embedding_cache_size = 10000 # Maximum number of embeddings to cache
+        self.embedding_cache_ttl = 3600 # Cache TTL in seconds
+        self.embedding_cache: Dict[str, Dict[str, Any]] = {}
+        self._embedding_semaphore = asyncio.Semaphore(10) # Semaphore for concurrent embedding requests
+        self._last_embedding_cleanup = time.time()
+        
+        # Performance statistics
+        self.stats = {
+            'cache_hits': 0,
+            'cache_misses': 0,
+            'embeddings_generated': 0,
+            'total_processing_time': 0.0,
+            'avg_processing_time': 0.0,
+        }
     
     def _initialize_embedding_model(self) -> None:
         """Initialize embedding model with robust error handling."""
@@ -279,36 +298,162 @@ class ContextScoringEngine:
         )
     
     async def _get_embedding(self, text: str) -> Optional[List[float]]:
-        """Get embedding for a text."""
+        """Get embedding for a text with caching and optimization."""
         if not self.embedding_model:
             return None
         
+        # Check cache first
+        cache_key = self._generate_embedding_cache_key(text)
+        if cache_key in self.embedding_cache:
+            cached_result = self.embedding_cache[cache_key]
+            if time.time() - cached_result['timestamp'] < self.embedding_cache_ttl:
+                self.stats['cache_hits'] += 1
+                return cached_result['embedding']
+            else:
+                # Expired cache entry
+                del self.embedding_cache[cache_key]
+        
         try:
-            # Run in thread pool to avoid blocking
-            loop = asyncio.get_event_loop()
-            embedding = await loop.run_in_executor(
-                None, self.embedding_model.encode, text
-            )
-            return embedding.tolist()
+            self.stats['cache_misses'] += 1
+            # Use semaphore to limit concurrent embedding requests
+            async with self._embedding_semaphore:
+                # Run in thread pool to avoid blocking
+                loop = asyncio.get_event_loop()
+                embedding = await loop.run_in_executor(
+                    None, self.embedding_model.encode, text
+                )
+                
+                # Cache the result
+                self._cache_embedding(cache_key, embedding.tolist())
+                self.stats['embeddings_generated'] += 1
+                
+                return embedding.tolist()
         except Exception as e:
             self.logger.warning(f"Failed to get embedding: {e}")
             return None
     
     async def _get_embeddings(self, texts: List[str]) -> Optional[List[List[float]]]:
-        """Get embeddings for multiple texts."""
+        """Get embeddings for multiple texts with batching and optimization."""
         if not self.embedding_model:
             return None
         
+        if not texts:
+            return []
+        
         try:
-            # Run in thread pool to avoid blocking
-            loop = asyncio.get_event_loop()
-            embeddings = await loop.run_in_executor(
-                None, self.embedding_model.encode, texts
-            )
-            return embeddings.tolist()
+            # Check cache for all texts first
+            cached_embeddings = []
+            uncached_texts = []
+            uncached_indices = []
+            
+            for i, text in enumerate(texts):
+                cache_key = self._generate_embedding_cache_key(text)
+                if cache_key in self.embedding_cache:
+                    cached_result = self.embedding_cache[cache_key]
+                    if time.time() - cached_result['timestamp'] < self.embedding_cache_ttl:
+                        self.stats['cache_hits'] += 1
+                        cached_embeddings.append((i, cached_result['embedding']))
+                        continue
+                    else:
+                        # Expired cache entry
+                        del self.embedding_cache[cache_key]
+                
+                self.stats['cache_misses'] += 1
+                uncached_texts.append(text)
+                uncached_indices.append(i)
+            
+            # If all texts were cached, return them in order
+            if not uncached_texts:
+                cached_embeddings.sort(key=lambda x: x[0])
+                return [emb for _, emb in cached_embeddings]
+            
+            # Process uncached texts in batches
+            all_embeddings = [None] * len(texts)
+            
+            # Fill in cached embeddings
+            for i, emb in cached_embeddings:
+                all_embeddings[i] = emb
+            
+            # Process uncached texts in batches
+            batch_size = self.embedding_batch_size
+            for batch_start in range(0, len(uncached_texts), batch_size):
+                batch_end = min(batch_start + batch_size, len(uncached_texts))
+                batch_texts = uncached_texts[batch_start:batch_end]
+                batch_indices = uncached_indices[batch_start:batch_end]
+                
+                # Use semaphore to limit concurrent embedding requests
+                async with self._embedding_semaphore:
+                    # Run in thread pool to avoid blocking
+                    loop = asyncio.get_event_loop()
+                    batch_embeddings = await loop.run_in_executor(
+                        None, self.embedding_model.encode, batch_texts
+                    )
+                    
+                    # Cache results and fill in embeddings
+                    for j, (text, embedding) in enumerate(zip(batch_texts, batch_embeddings)):
+                        original_index = batch_indices[j]
+                        cache_key = self._generate_embedding_cache_key(text)
+                        self._cache_embedding(cache_key, embedding.tolist())
+                        all_embeddings[original_index] = embedding.tolist()
+                        self.stats['embeddings_generated'] += 1
+            
+            # Clean up cache periodically
+            await self._cleanup_embedding_cache()
+            
+            return all_embeddings
+            
         except Exception as e:
             self.logger.warning(f"Failed to get embeddings: {e}")
             return None
+    
+    def _generate_embedding_cache_key(self, text: str) -> str:
+        """Generate cache key for embedding."""
+        # Create a deterministic hash of the text
+        text_hash = hashlib.md5(text.encode('utf-8')).hexdigest()
+        return f"emb_{text_hash}"
+    
+    def _cache_embedding(self, cache_key: str, embedding: List[float]) -> None:
+        """Cache an embedding result."""
+        # Clean up cache if it's too large
+        if len(self.embedding_cache) >= self.embedding_cache_size:
+            self._cleanup_embedding_cache_sync()
+        
+        self.embedding_cache[cache_key] = {
+            'embedding': embedding,
+            'timestamp': time.time()
+        }
+    
+    def _cleanup_embedding_cache_sync(self) -> None:
+        """Clean up expired cache entries synchronously."""
+        current_time = time.time()
+        expired_keys = [
+            key for key, value in self.embedding_cache.items()
+            if current_time - value['timestamp'] > self.embedding_cache_ttl
+        ]
+        
+        for key in expired_keys:
+            del self.embedding_cache[key]
+        
+        # If still too large, remove oldest entries
+        if len(self.embedding_cache) >= self.embedding_cache_size:
+            sorted_items = sorted(
+                self.embedding_cache.items(),
+                key=lambda x: x[1]['timestamp']
+            )
+            items_to_remove = len(sorted_items) - self.embedding_cache_size + 100
+            for key, _ in sorted_items[:items_to_remove]:
+                del self.embedding_cache[key]
+    
+    async def _cleanup_embedding_cache(self) -> None:
+        """Clean up expired cache entries asynchronously."""
+        current_time = time.time()
+        
+        # Only cleanup every 5 minutes to avoid performance impact
+        if current_time - self._last_embedding_cleanup < 300:
+            return
+        
+        self._cleanup_embedding_cache_sync()
+        self._last_embedding_cleanup = current_time
     
     async def _calculate_semantic_similarity(
         self,

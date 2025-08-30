@@ -549,13 +549,13 @@ async def main():
     print(f"   ✅ Advanced scoring scenarios")
     print(f"\n📚 Usage Examples:")
     print(f"   # Configure ensemble weights")
-    print(f"   await scoring_engine.update_ensemble_config({'ensemble_weights': {'weighted_average': 0.6, 'geometric_mean': 0.2, 'harmonic_mean': 0.1, 'trimmed_mean': 0.1}})")
+    print(f"   await scoring_engine.update_ensemble_config({{'ensemble_weights': {{'weighted_average': 0.6, 'geometric_mean': 0.2, 'harmonic_mean': 0.1, 'trimmed_mean': 0.1}}}})")
     print(f"   # Optimize ensemble weights")
     print(f"   await scoring_engine.optimize_ensemble_weights(validation_data)")
     print(f"   # Get ensemble statistics")
     print(f"   stats = await scoring_engine.get_ensemble_statistics()")
     print(f"   # Update scoring weights")
-    print(f"   await scoring_engine.update_scoring_weights({'semantic_similarity': 0.3, 'keyword_overlap': 0.2})")
+    print(f"   await scoring_engine.update_scoring_weights({{'semantic_similarity': 0.3, 'keyword_overlap': 0.2}})")
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -344,13 +344,13 @@ class ContextStorageEngine:
         """Compress context content using gzip."""
         try:
             # Serialize context to JSON
-            context_json = context.json()
+            context_json = context.model_dump_json()
             
             # Compress the JSON data
             compressed_data = gzip.compress(context_json.encode('utf-8'))
             
             # Create compressed context
-            compressed_context = context.copy()
+            compressed_context = context.model_copy()
             compressed_context.metadata['compressed'] = True
             compressed_context.metadata['compressed_data'] = base64.b64encode(compressed_data).decode('utf-8')
             compressed_context.metadata['original_size'] = len(context_json)
@@ -366,13 +366,13 @@ class ContextStorageEngine:
         """Encrypt context content using Fernet symmetric encryption."""
         try:
             # Serialize context to JSON
-            context_json = context.json()
+            context_json = context.model_dump_json()
             
             # Encrypt the JSON data
             encrypted_data = self.fernet.encrypt(context_json.encode('utf-8'))
             
             # Create encrypted context
-            encrypted_context = context.copy()
+            encrypted_context = context.model_copy()
             encrypted_context.metadata['encrypted'] = True
             encrypted_context.metadata['encrypted_data'] = base64.b64encode(encrypted_data).decode('utf-8')
             encrypted_context.metadata['encrypted_at'] = datetime.now().isoformat()
@@ -397,7 +397,7 @@ class ContextStorageEngine:
             
             # Deserialize back to context
             from ..models import Context
-            decompressed_context = Context.parse_raw(decompressed_data.decode('utf-8'))
+            decompressed_context = Context.model_validate_json(decompressed_data.decode('utf-8'))
             
             return decompressed_context
             
@@ -419,7 +419,7 @@ class ContextStorageEngine:
             
             # Deserialize back to context
             from ..models import Context
-            decrypted_context = Context.parse_raw(decrypted_data.decode('utf-8'))
+            decrypted_context = Context.model_validate_json(decrypted_data.decode('utf-8'))
             
             return decrypted_context
             

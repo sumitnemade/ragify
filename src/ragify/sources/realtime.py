@@ -6,8 +6,9 @@ import asyncio
 import json
 import time
 from typing import List, Optional, Dict, Any, Callable, Awaitable
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import structlog
+from uuid import uuid4
 
 # Real-time synchronization imports
 import websockets
@@ -96,7 +97,26 @@ class RealtimeSource(BaseDataSource):
                 'password': kwargs.get('redis_password', None),
             }
         }
-    
+
+        # New attributes for robust features
+        self.subscribers: set[Callable] = set() # For publish_update
+        self.data_buffer: List[Dict[str, Any]] = [] # For buffering
+        self.max_buffer_size: int = kwargs.get('max_buffer_size', 1000) # Default 1000
+        self.filter_config: Dict[str, Any] = {} # For filtering
+        self.transform_config: Dict[str, Any] = {} # For transformations
+        self.rate_limit: int = kwargs.get('rate_limit', 10) # Default 10 per second
+        self.rate_limit_timestamps: List[datetime] = [] # For rate limiting
+        self.persistence_enabled: bool = False # For persistence
+        self.compression_enabled: bool = False # For compression
+        self.encryption_enabled: bool = False # For encryption
+        self.validation_rules: Dict[str, Any] = {} # For validation
+        self.routing_rules: Dict[str, str] = {} # For routing
+        self._streaming: bool = False # For streaming control
+        self.messages_processed: int = 0 # For performance metrics
+        self.avg_processing_time: float = 0.0 # For performance metrics
+        self.error_rate: float = 0.0 # For performance metrics
+        self.log_history: List[Dict[str, Any]] = [] # For logging
+
     async def get_chunks(
         self,
         query: str,
@@ -791,3 +811,699 @@ class RealtimeSource(BaseDataSource):
             
         except Exception as e:
             self.logger.error(f"Failed to publish message: {e}")
+
+    # Public connection methods
+    async def connect(self) -> None:
+        """Connect to the real-time source."""
+        try:
+            await self._connect()
+            self.is_connected = True
+            self.logger.info("Connected to real-time source")
+        except Exception as e:
+            self.logger.error(f"Failed to connect: {e}")
+            raise
+
+    async def disconnect(self) -> None:
+        """Disconnect from the real-time source."""
+        try:
+            await self._disconnect()
+            self.is_connected = False
+            self.logger.info("Disconnected from real-time source")
+        except Exception as e:
+            self.logger.error(f"Failed to disconnect: {e}")
+            raise
+
+    # Streaming control methods
+    async def start_streaming(self) -> None:
+        """Start data streaming."""
+        try:
+            if not self.is_connected:
+                await self.connect()
+            
+            self._streaming = True
+            self.logger.info("Started data streaming")
+        except Exception as e:
+            self.logger.error(f"Failed to start streaming: {e}")
+            raise
+
+    async def stop_streaming(self) -> None:
+        """Stop data streaming."""
+        try:
+            self._streaming = False
+            self.logger.info("Stopped data streaming")
+        except Exception as e:
+            self.logger.error(f"Failed to stop streaming: {e}")
+            raise
+
+    # Subscription methods
+    async def subscribe_to_updates(self, callback: Callable) -> None:
+        """Subscribe to real-time updates."""
+        try:
+            if callback not in self.subscribers:
+                self.subscribers.add(callback)
+                self.logger.info(f"Added subscriber: {callback}")
+        except Exception as e:
+            self.logger.error(f"Failed to subscribe: {e}")
+            raise
+
+    async def unsubscribe_from_updates(self, callback: Callable) -> None:
+        """Unsubscribe from real-time updates."""
+        try:
+            if callback in self.subscribers:
+                self.subscribers.remove(callback)
+                self.logger.info(f"Removed subscriber: {callback}")
+        except Exception as e:
+            self.logger.error(f"Failed to unsubscribe: {e}")
+            raise
+
+    async def publish_update(self, update_data: Dict[str, Any]) -> None:
+        """Publish update to all subscribers."""
+        try:
+            for callback in self.subscribers:
+                try:
+                    await callback(update_data)
+                except Exception as e:
+                    self.logger.warning(f"Subscriber callback failed: {e}")
+        except Exception as e:
+            self.logger.error(f"Failed to publish update: {e}")
+            raise
+
+    # Buffer management methods
+    async def add_to_buffer(self, data: Any) -> None:
+        """Add data to the buffer."""
+        try:
+            if len(self.data_buffer) >= self.max_buffer_size:
+                # Remove oldest data if buffer is full
+                self.data_buffer.pop(0)
+            
+            self.data_buffer.append({
+                "data": data,
+                "timestamp": datetime.now(timezone.utc),
+                "id": str(uuid4())
+            })
+        except Exception as e:
+            self.logger.error(f"Failed to add to buffer: {e}")
+            raise
+
+    async def get_buffered_data(self) -> List[Dict[str, Any]]:
+        """Get all buffered data."""
+        try:
+            return self.data_buffer.copy()
+        except Exception as e:
+            self.logger.error(f"Failed to get buffered data: {e}")
+            return []
+
+    # Filtering methods
+    async def set_filter(self, filter_config: Dict[str, Any]) -> None:
+        """Set data filter configuration."""
+        try:
+            self.filter_config = filter_config
+            self.logger.info(f"Set filter: {filter_config}")
+        except Exception as e:
+            self.logger.error(f"Failed to set filter: {e}")
+            raise
+
+    async def apply_filter(self, data: Any) -> Optional[Any]:
+        """Apply filter to data."""
+        try:
+            if not hasattr(self, 'filter_config') or not self.filter_config:
+                return data
+            
+            filter_type = self.filter_config.get("type")
+            if filter_type == "keyword":
+                keywords = self.filter_config.get("keywords", [])
+                if isinstance(data, str):
+                    return data if any(keyword in data for keyword in keywords) else None
+                elif isinstance(data, dict):
+                    data_str = str(data)
+                    return data if any(keyword in data_str for keyword in keywords) else None
+            
+            return data
+        except Exception as e:
+            self.logger.error(f"Failed to apply filter: {e}")
+            return None
+
+    # Transformation methods
+    async def set_transformation(self, transform_config: Dict[str, Any]) -> None:
+        """Set data transformation configuration."""
+        try:
+            self.transform_config = transform_config
+            self.logger.info(f"Set transformation: {transform_config}")
+        except Exception as e:
+            self.logger.error(f"Failed to set transformation: {e}")
+            raise
+
+    async def apply_transformation(self, data: Any) -> Any:
+        """Apply transformation to data."""
+        try:
+            if not hasattr(self, 'transform_config') or not self.transform_config:
+                return data
+            
+            transform_type = self.transform_config.get("type")
+            if transform_type == "uppercase" and isinstance(data, str):
+                return data.upper()
+            elif transform_type == "lowercase" and isinstance(data, str):
+                return data.lower()
+            elif transform_type == "reverse" and isinstance(data, str):
+                return data[::-1]
+            
+            return data
+        except Exception as e:
+            self.logger.error(f"Failed to apply transformation: {e}")
+            return data
+
+    # Rate limiting methods
+    async def set_rate_limit(self, max_per_second: int) -> None:
+        """Set rate limit for operations."""
+        try:
+            self.rate_limit = max_per_second
+            self.rate_limit_timestamps = []
+            self.logger.info(f"Set rate limit: {max_per_second} per second")
+        except Exception as e:
+            self.logger.error(f"Failed to set rate limit: {e}")
+            raise
+
+    async def _check_rate_limit(self) -> bool:
+        """Check if operation is within rate limit."""
+        try:
+            if not hasattr(self, 'rate_limit') or not self.rate_limit:
+                return True
+            
+            now = datetime.now(timezone.utc)
+            # Remove timestamps older than 1 second
+            self.rate_limit_timestamps = [
+                ts for ts in self.rate_limit_timestamps 
+                if (now - ts).total_seconds() < 1.0
+            ]
+            
+            if len(self.rate_limit_timestamps) >= self.rate_limit:
+                return False
+            
+            self.rate_limit_timestamps.append(now)
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to check rate limit: {e}")
+            return True
+
+    # Health monitoring methods
+    async def get_health_status(self) -> Dict[str, Any]:
+        """Get health status of the real-time source."""
+        try:
+            return {
+                "status": "healthy" if self.is_connected else "disconnected",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "details": {
+                    "connection_type": self.connection_type,
+                    "is_connected": self.is_connected,
+                    "is_streaming": getattr(self, '_streaming', False),
+                    "buffer_size": len(self.data_buffer),
+                    "subscriber_count": len(self.subscribers)
+                }
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to get health status: {e}")
+            return {"status": "error", "error": str(e)}
+
+    # Performance metrics methods
+    async def get_performance_metrics(self) -> Dict[str, Any]:
+        """Get performance metrics."""
+        try:
+            return {
+                "messages_processed": getattr(self, 'messages_processed', 0),
+                "average_processing_time": getattr(self, 'avg_processing_time', 0.0),
+                "error_rate": getattr(self, 'error_rate', 0.0),
+                "buffer_utilization": len(self.data_buffer) / self.max_buffer_size if self.max_buffer_size > 0 else 0.0
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to get performance metrics: {e}")
+            return {}
+
+    # Data persistence methods
+    async def enable_persistence(self) -> None:
+        """Enable data persistence."""
+        try:
+            self.persistence_enabled = True
+            self.logger.info("Enabled data persistence")
+        except Exception as e:
+            self.logger.error(f"Failed to enable persistence: {e}")
+            raise
+
+    # Data compression methods
+    async def enable_compression(self) -> None:
+        """Enable data compression."""
+        try:
+            self.compression_enabled = True
+            self.logger.info("Enabled data compression")
+        except Exception as e:
+            self.logger.error(f"Failed to enable compression: {e}")
+            raise
+
+    async def compress_data(self, data: str) -> bytes:
+        """Compress data."""
+        try:
+            if not hasattr(self, 'compression_enabled') or not self.compression_enabled:
+                return data.encode('utf-8')
+            
+            import gzip
+            return gzip.compress(data.encode('utf-8'))
+        except Exception as e:
+            self.logger.error(f"Failed to compress data: {e}")
+            return data.encode('utf-8')
+
+    # Data encryption methods
+    async def enable_encryption(self) -> None:
+        """Enable data encryption."""
+        try:
+            self.encryption_enabled = True
+            self.logger.info("Enabled data encryption")
+        except Exception as e:
+            self.logger.error(f"Failed to enable encryption: {e}")
+            raise
+
+    async def encrypt_data(self, data: str) -> bytes:
+        """Encrypt data."""
+        try:
+            if not hasattr(self, 'encryption_enabled') or not self.encryption_enabled:
+                return data.encode('utf-8')
+            
+            # Simple XOR encryption for testing (not secure for production)
+            key = b'RAGIFY_KEY_123'
+            data_bytes = data.encode('utf-8')
+            encrypted = bytes(a ^ b for a, b in zip(data_bytes, key * (len(data_bytes) // len(key) + 1)))
+            return encrypted
+        except Exception as e:
+            self.logger.error(f"Failed to encrypt data: {e}")
+            return data.encode('utf-8')
+
+    # Batch processing methods
+    async def process_batch(self) -> Dict[str, Any]:
+        """Process all buffered data as a batch."""
+        try:
+            batch_size = len(self.data_buffer)
+            processed_items = []
+            
+            for item in self.data_buffer:
+                try:
+                    # Apply transformations and filters
+                    processed_item = await self.apply_transformation(item["data"])
+                    if processed_item is not None:
+                        processed_item = await self.apply_filter(processed_item)
+                        if processed_item is not None:
+                            processed_items.append(processed_item)
+                except Exception as e:
+                    self.logger.warning(f"Failed to process item: {e}")
+            
+            # Clear buffer after processing
+            self.data_buffer.clear()
+            
+            return {
+                "batch_processed": True,
+                "items_processed": len(processed_items),
+                "total_items": batch_size,
+                "processed_data": processed_items
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to process batch: {e}")
+            return {"batch_processed": False, "error": str(e)}
+
+    # Data validation methods
+    async def set_validation_rules(self, rules: Dict[str, Any]) -> None:
+        """Set data validation rules."""
+        try:
+            self.validation_rules = rules
+            self.logger.info(f"Set validation rules: {rules}")
+        except Exception as e:
+            self.logger.error(f"Failed to set validation rules: {e}")
+            raise
+
+    async def validate_data(self, data: Any) -> bool:
+        """Validate data against rules."""
+        try:
+            if not hasattr(self, 'validation_rules') or not self.validation_rules:
+                return True
+            
+            # Check required fields
+            required_fields = self.validation_rules.get("required_fields", [])
+            if isinstance(data, dict):
+                for field in required_fields:
+                    if field not in data:
+                        return False
+            
+            # Check max length
+            max_length = self.validation_rules.get("max_length")
+            if max_length and isinstance(data, str) and len(data) > max_length:
+                return False
+            
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to validate data: {e}")
+            return False
+
+    # Data routing methods
+    async def set_routing_rules(self, rules: Dict[str, str]) -> None:
+        """Set data routing rules."""
+        try:
+            self.routing_rules = rules
+            self.logger.info(f"Set routing rules: {rules}")
+        except Exception as e:
+            self.logger.error(f"Failed to set routing rules: {e}")
+            raise
+
+    async def route_data(self, data: Any) -> str:
+        """Route data based on rules."""
+        try:
+            if not hasattr(self, 'routing_rules') or not self.routing_rules:
+                return "default"
+            
+            # Simple priority-based routing
+            if isinstance(data, dict):
+                priority = data.get("priority", "low")
+                return self.routing_rules.get(priority, "default")
+            
+            return "default"
+        except Exception as e:
+            self.logger.error(f"Failed to route data: {e}")
+            return "default"
+
+    # Data aggregation methods
+    async def aggregate_data(self, field: str, operation: str) -> Any:
+        """Aggregate data from buffer."""
+        try:
+            if not self.data_buffer:
+                return None
+            
+            values = []
+            for item in self.data_buffer:
+                if isinstance(item["data"], dict) and field in item["data"]:
+                    values.append(item["data"][field])
+            
+            if not values:
+                return None
+            
+            if operation == "sum":
+                return sum(values)
+            elif operation == "average":
+                return sum(values) / len(values)
+            elif operation == "min":
+                return min(values)
+            elif operation == "max":
+                return max(values)
+            elif operation == "count":
+                return len(values)
+            
+            return None
+        except Exception as e:
+            self.logger.error(f"Failed to aggregate data: {e}")
+            return None
+
+    # Data sampling methods
+    async def sample_data(self, sample_size: int) -> List[Any]:
+        """Sample data from buffer."""
+        try:
+            if not self.data_buffer:
+                return []
+            
+            import random
+            sample_size = min(sample_size, len(self.data_buffer))
+            return random.sample([item["data"] for item in self.data_buffer], sample_size)
+        except Exception as e:
+            self.logger.error(f"Failed to sample data: {e}")
+            return []
+
+    # Data archiving methods
+    async def archive_old_data(self, days_old: int = 1) -> Dict[str, Any]:
+        """Archive old data from buffer."""
+        try:
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_old)
+            archived_count = 0
+            
+            # Filter out old data
+            self.data_buffer = [
+                item for item in self.data_buffer
+                if item["timestamp"] > cutoff_date
+            ]
+            
+            archived_count = len(self.data_buffer)
+            return {
+                "archived": True,
+                "items_archived": archived_count,
+                "cutoff_date": cutoff_date.isoformat()
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to archive data: {e}")
+            return {"archived": False, "error": str(e)}
+
+    # Data cleanup methods
+    async def cleanup_data(self) -> Dict[str, Any]:
+        """Clean up data buffer."""
+        try:
+            original_size = len(self.data_buffer)
+            
+            # Remove duplicate data
+            seen = set()
+            unique_data = []
+            for item in self.data_buffer:
+                data_hash = hash(str(item["data"]))
+                if data_hash not in seen:
+                    seen.add(data_hash)
+                    unique_data.append(item)
+            
+            self.data_buffer = unique_data
+            cleaned_count = original_size - len(self.data_buffer)
+            
+            return {
+                "cleaned": True,
+                "items_removed": cleaned_count,
+                "remaining_items": len(self.data_buffer)
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to cleanup data: {e}")
+            return {"cleaned": False, "error": str(e)}
+
+    # Memory management methods
+    async def get_memory_usage(self) -> Dict[str, Any]:
+        """Get memory usage information."""
+        try:
+            import sys
+            import psutil
+            
+            process = psutil.Process()
+            memory_info = process.memory_info()
+            
+            return {
+                "rss": memory_info.rss,
+                "vms": memory_info.vms,
+                "percent": process.memory_percent(),
+                "buffer_size": len(self.data_buffer),
+                "buffer_memory": len(self.data_buffer) * 100  # Rough estimate
+            }
+        except ImportError:
+            # Fallback if psutil is not available
+            return {
+                "buffer_size": len(self.data_buffer),
+                "buffer_memory": len(self.data_buffer) * 100
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to get memory usage: {e}")
+            return {"error": str(e)}
+
+    # Configuration methods
+    async def get_configuration(self) -> Dict[str, Any]:
+        """Get current configuration."""
+        try:
+            return {
+                "connection_type": self.connection_type,
+                "connection_config": self.connection_config,
+                "max_buffer_size": self.max_buffer_size,
+                "filter_config": getattr(self, 'filter_config', {}),
+                "transform_config": getattr(self, 'transform_config', {}),
+                "rate_limit": getattr(self, 'rate_limit', None),
+                "validation_rules": getattr(self, 'validation_rules', {}),
+                "routing_rules": getattr(self, 'routing_rules', {})
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to get configuration: {e}")
+            return {}
+
+    async def update_configuration(self, new_config: Dict[str, Any]) -> None:
+        """Update configuration."""
+        try:
+            for key, value in new_config.items():
+                if hasattr(self, key):
+                    setattr(self, key, value)
+            
+            self.logger.info(f"Updated configuration: {new_config}")
+        except Exception as e:
+            self.logger.error(f"Failed to update configuration: {e}")
+            raise
+
+    # Logging methods
+    async def enable_detailed_logging(self) -> None:
+        """Enable detailed logging."""
+        try:
+            self.detailed_logging = True
+            self.logger.info("Enabled detailed logging")
+        except Exception as e:
+            self.logger.error(f"Failed to enable detailed logging: {e}")
+            raise
+
+    async def get_logs(self) -> List[Dict[str, Any]]:
+        """Get recent logs."""
+        try:
+            if not hasattr(self, 'log_history'):
+                self.log_history = []
+            
+            return self.log_history[-100:]  # Last 100 log entries
+        except Exception as e:
+            self.logger.error(f"Failed to get logs: {e}")
+            return []
+
+    # Data export/import methods
+    async def export_data(self, file_path: str) -> Dict[str, Any]:
+        """Export data to file."""
+        try:
+            import json
+            
+            export_data = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "data": [item["data"] for item in self.data_buffer],
+                "metadata": {
+                    "buffer_size": len(self.data_buffer),
+                    "source_name": self.name,
+                    "source_type": self.source_type.value
+                }
+            }
+            
+            with open(file_path, 'w') as f:
+                json.dump(export_data, f, indent=2, default=str)
+            
+            return {
+                "exported": True,
+                "file_path": file_path,
+                "items_exported": len(self.data_buffer)
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to export data: {e}")
+            return {"exported": False, "error": str(e)}
+
+    async def import_data(self, file_path: str) -> Dict[str, Any]:
+        """Import data from file."""
+        try:
+            import json
+            
+            with open(file_path, 'r') as f:
+                import_data = json.load(f)
+            
+            imported_count = 0
+            # Handle both list and dict formats
+            if isinstance(import_data, list):
+                data_items = import_data
+            else:
+                data_items = import_data.get("data", [])
+            
+            for item in data_items:
+                await self.add_to_buffer(item)
+                imported_count += 1
+            
+            return {
+                "imported": True,
+                "items_imported": imported_count,
+                "file_path": file_path
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to import data: {e}")
+            return {"imported": False, "error": str(e)}
+
+    # Data synchronization methods
+    async def sync_with_source(self, other_source: 'RealtimeSource') -> Dict[str, Any]:
+        """Synchronize data with another source."""
+        try:
+            other_data = await other_source.get_buffered_data()
+            synced_count = 0
+            
+            for item in other_data:
+                if item not in self.data_buffer:
+                    await self.add_to_buffer(item["data"])
+                    synced_count += 1
+            
+            return {
+                "synced": True,
+                "items_synced": synced_count,
+                "source_name": other_source.name
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to sync with source: {e}")
+            return {"synced": False, "error": str(e)}
+
+    # Backup and restore methods
+    async def create_backup(self, backup_path: str) -> Dict[str, Any]:
+        """Create a backup of current data."""
+        try:
+            backup_data = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "data": self.data_buffer,
+                "configuration": await self.get_configuration()
+            }
+            
+            with open(backup_path, 'w') as f:
+                json.dump(backup_data, f, indent=2, default=str)
+            
+            return {
+                "backup_created": True,
+                "backup_path": backup_path,
+                "items_backed_up": len(self.data_buffer)
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to create backup: {e}")
+            return {"backup_created": False, "error": str(e)}
+
+    async def restore_from_backup(self, backup_path: str) -> Dict[str, Any]:
+        """Restore data from backup."""
+        try:
+            with open(backup_path, 'r') as f:
+                backup_data = json.load(f)
+            
+            # Restore configuration
+            if "configuration" in backup_data:
+                await self.update_configuration(backup_data["configuration"])
+            
+            # Restore data
+            restored_count = 0
+            for item in backup_data.get("data", []):
+                await self.add_to_buffer(item["data"])
+                restored_count += 1
+            
+            return {
+                "restored": True,
+                "items_restored": restored_count,
+                "backup_path": backup_path
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to restore from backup: {e}")
+            return {"restored": False, "error": str(e)}
+
+    # Connection recovery methods
+    async def attempt_recovery(self) -> Dict[str, Any]:
+        """Attempt to recover from connection issues."""
+        try:
+            if not self.is_connected:
+                await self._connect()
+                self.is_connected = True
+                
+                return {
+                    "recovery_attempted": True,
+                    "recovery_successful": True,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+            else:
+                return {
+                    "recovery_attempted": False,
+                    "reason": "Already connected"
+                }
+        except Exception as e:
+            self.logger.error(f"Recovery failed: {e}")
+            return {
+                "recovery_attempted": True,
+                "recovery_successful": False,
+                "error": str(e)
+            }

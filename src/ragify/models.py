@@ -7,7 +7,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Union, Set
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class PrivacyLevel(str, Enum):
@@ -84,11 +84,12 @@ class ContextSource(BaseModel):
     authority_score: float = Field(default=0.5, ge=0.0, le=1.0)
     freshness_score: float = Field(default=1.0, ge=0.0, le=1.0)
 
-    class Config:
-        json_encoders = {
+    model_config = {
+        "json_encoders": {
             datetime: lambda v: v.isoformat(),
             UUID: lambda v: str(v),
         }
+    }
 
 
 class RelevanceScore(BaseModel):
@@ -99,10 +100,11 @@ class RelevanceScore(BaseModel):
     confidence_level: float = Field(default=0.95, ge=0.0, le=1.0)
     factors: Dict[str, float] = Field(default_factory=dict)
     
-    @validator('confidence_upper')
-    def validate_confidence_bounds(cls, v, values):
-        if v is not None and 'confidence_lower' in values and values['confidence_lower'] is not None:
-            if v < values['confidence_lower']:
+    @field_validator('confidence_upper')
+    @classmethod
+    def validate_confidence_bounds(cls, v, info):
+        if v is not None and info.data and 'confidence_lower' in info.data and info.data['confidence_lower'] is not None:
+            if v < info.data['confidence_lower']:
                 raise ValueError('confidence_upper must be >= confidence_lower')
         return v
 
@@ -122,11 +124,12 @@ class ContextChunk(BaseModel):
     conflict_flags: Set[ConflictType] = Field(default_factory=set)
     fusion_metadata: Optional[FusionMetadata] = None
 
-    class Config:
-        json_encoders = {
+    model_config = {
+        "json_encoders": {
             datetime: lambda v: v.isoformat(),
             UUID: lambda v: str(v),
         }
+    }
 
 
 class Context(BaseModel):
@@ -192,11 +195,12 @@ class Context(BaseModel):
             else:
                 break
 
-    class Config:
-        json_encoders = {
+    model_config = {
+        "json_encoders": {
             datetime: lambda v: v.isoformat(),
             UUID: lambda v: str(v),
         }
+    }
 
 
 class ContextRequest(BaseModel):

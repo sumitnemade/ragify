@@ -658,7 +658,7 @@ class CacheManager:
         """Serialize context to bytes."""
         try:
             if self.config['serialization_format'] == 'json':
-                return json.dumps(context.dict()).encode('utf-8')
+                return json.dumps(context.model_dump()).encode('utf-8')
             else:  # pickle
                 return pickle.dumps(context)
         except Exception as e:

@@ -196,6 +196,8 @@ minimal_test.py
 # Ragify specific - Performance and monitoring files
 ragify_performance.log
 optimal_ragify_config.json
+PERFORMANCE_OPTIMIZATION_README.md
+PERFORMANCE_OPTIMIZATION_SUMMARY.md
 
 # Ragify specific - Generated database files in examples
 examples/*.db

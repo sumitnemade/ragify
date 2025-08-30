@@ -6,6 +6,7 @@ import asyncio
 import os
 import json
 import pickle
+import time
 from typing import List, Dict, Any, Optional, Tuple, Union
 from pathlib import Path
 import numpy as np
@@ -92,12 +93,24 @@ class VectorDatabase:
             'nlist': 100,  # Number of clusters for IVF
         }
         
+        # Performance optimization
+        self.connection_pool = {}
+        self.max_connections = 10
+        self.connection_timeout = 30.0
+        self.search_cache = {}
+        self.search_cache_size = 1000
+        self.search_cache_ttl = 1800  # 30 minutes
+        
         # Statistics
         self.stats = {
             'total_vectors': 0,
             'indexed_vectors': 0,
             'searches_performed': 0,
             'avg_search_time': 0.0,
+            'cache_hits': 0,
+            'cache_misses': 0,
+            'connection_pool_hits': 0,
+            'connection_pool_misses': 0,
         }
         
         # Validate database type
@@ -1112,3 +1125,201 @@ class VectorDatabase:
             
         except Exception as e:
             self.logger.error(f"Error closing vector database connection: {e}")
+    
+    # Performance optimization methods
+    async def _get_connection(self, connection_key: str = "default"):
+        """
+        Get a connection from the pool or create a new one.
+        
+        Args:
+            connection_key: Key to identify the connection
+            
+        Returns:
+            Database connection object
+        """
+        if connection_key in self.connection_pool:
+            connection = self.connection_pool[connection_key]
+            if self._is_connection_valid(connection):
+                self.stats['connection_pool_hits'] += 1
+                return connection
+            else:
+                # Remove invalid connection
+                del self.connection_pool[connection_key]
+        
+        # Create new connection
+        try:
+            connection = await self._create_connection()
+            if len(self.connection_pool) < self.max_connections:
+                self.connection_pool[connection_key] = connection
+                self.stats['connection_pool_misses'] += 1
+            return connection
+        except Exception as e:
+            self.logger.error(f"Failed to create connection: {e}")
+            raise
+    
+    def _is_connection_valid(self, connection) -> bool:
+        """Check if a connection is still valid."""
+        try:
+            # Basic connection validation - can be overridden by specific implementations
+            if hasattr(connection, 'ping'):
+                return connection.ping()
+            elif hasattr(connection, 'health'):
+                return connection.health()
+            else:
+                # Assume connection is valid if no validation method available
+                return True
+        except Exception:
+            return False
+    
+    async def _create_connection(self):
+        """Create a new database connection."""
+        # This method should be implemented by specific database classes
+        # For now, return None to indicate it needs implementation
+        return None
+    
+    def _generate_search_cache_key(self, query_embedding: List[float], top_k: int, min_score: float, filters: Optional[Dict] = None) -> str:
+        """Generate cache key for search results."""
+        # Create a deterministic hash of search parameters
+        import hashlib
+        
+        search_params = {
+            'query_hash': hashlib.md5(str(query_embedding).encode()).hexdigest()[:16],
+            'top_k': top_k,
+            'min_score': min_score,
+            'filters': filters or {}
+        }
+        
+        search_str = json.dumps(search_params, sort_keys=True)
+        return hashlib.md5(search_str.encode()).hexdigest()
+    
+    def _get_cached_search(self, cache_key: str) -> Optional[Tuple[List[ContextChunk], float]]:
+        """Get cached search results if available."""
+        if cache_key in self.search_cache:
+            cached_result = self.search_cache[cache_key]
+            if time.time() - cached_result['timestamp'] < self.search_cache_ttl:
+                self.stats['cache_hits'] += 1
+                return cached_result['results'], cached_result['search_time']
+            else:
+                # Expired cache entry
+                del self.search_cache[cache_key]
+        
+        self.stats['cache_misses'] += 1
+        return None
+    
+    def _cache_search_results(self, cache_key: str, results: List[ContextChunk], search_time: float):
+        """Cache search results."""
+        # Clean up cache if it's too large
+        if len(self.search_cache) >= self.search_cache_size:
+            self._cleanup_search_cache()
+        
+        self.search_cache[cache_key] = {
+            'results': results,
+            'search_time': search_time,
+            'timestamp': time.time()
+        }
+    
+    def _cleanup_search_cache(self):
+        """Clean up expired cache entries."""
+        current_time = time.time()
+        expired_keys = [
+            key for key, value in self.search_cache.items()
+            if current_time - value['timestamp'] > self.search_cache_ttl
+        ]
+        
+        for key in expired_keys:
+            del self.search_cache[key]
+        
+        # If still too large, remove oldest entries
+        if len(self.search_cache) >= self.search_cache_size:
+            sorted_items = sorted(
+                self.search_cache.items(),
+                key=lambda x: x[1]['timestamp']
+            )
+            items_to_remove = len(sorted_items) - self.search_cache_size + 100
+            for key, _ in sorted_items[:items_to_remove]:
+                del self.search_cache[key]
+    
+    async def search_optimized(
+        self,
+        query_embedding: List[float],
+        top_k: int = 10,
+        min_score: float = 0.0,
+        filters: Optional[Dict] = None,
+        use_cache: bool = True
+    ) -> List[ContextChunk]:
+        """
+        Search for similar vectors with caching and connection pooling.
+        
+        Args:
+            query_embedding: Query vector embedding
+            top_k: Maximum number of results
+            min_score: Minimum similarity score
+            filters: Optional filters for search
+            use_cache: Whether to use search result caching
+            
+        Returns:
+            List of context chunks with similarity scores
+        """
+        start_time = time.time()
+        
+        # Check cache first if enabled
+        if use_cache:
+            cache_key = self._generate_search_cache_key(query_embedding, top_k, min_score, filters)
+            cached_result = self._get_cached_search(cache_key)
+            if cached_result:
+                results, _ = cached_result
+                self.logger.debug(f"Search cache hit: {len(results)} results")
+                return results
+        
+        try:
+            # Get connection from pool
+            connection = await self._get_connection()
+            
+            # Perform search
+            results = await self._perform_search(
+                connection, query_embedding, top_k, min_score, filters
+            )
+            
+            # Update statistics
+            search_time = time.time() - start_time
+            self.stats['searches_performed'] += 1
+            self.stats['avg_search_time'] = (
+                (self.stats['avg_search_time'] * (self.stats['searches_performed'] - 1) + search_time) /
+                self.stats['searches_performed']
+            )
+            
+            # Cache results if enabled
+            if use_cache:
+                self._cache_search_results(cache_key, results, search_time)
+            
+            self.logger.debug(f"Search completed in {search_time:.3f}s: {len(results)} results")
+            return results
+            
+        except Exception as e:
+            self.logger.error(f"Search failed: {e}")
+            raise VectorDBError(f"Search operation failed: {e}")
+    
+    async def _perform_search(
+        self,
+        connection,
+        query_embedding: List[float],
+        top_k: int,
+        min_score: float,
+        filters: Optional[Dict]
+    ) -> List[ContextChunk]:
+        """
+        Perform the actual search operation.
+        This method should be implemented by specific database implementations.
+        
+        Args:
+            connection: Database connection
+            query_embedding: Query vector
+            top_k: Maximum results
+            min_score: Minimum score
+            filters: Search filters
+            
+        Returns:
+            List of context chunks
+        """
+        # Default implementation - should be overridden
+        raise NotImplementedError("_perform_search must be implemented by subclasses")

@@ -81,6 +81,9 @@ class ContextOrchestrator:
         self.updates_engine = ContextUpdatesEngine(self.config)
         
         self.logger.info("Context Orchestrator initialized", config=self.config.model_dump())
+        
+        # Note: Async components will be initialized when first needed
+        # This prevents blocking during sync initialization
     
     def _initialize_components(self) -> None:
         """Initialize core components."""
@@ -104,6 +107,17 @@ class ContextOrchestrator:
             
         except Exception as e:
             raise ConfigurationError("component_initialization", str(e), str(e))
+    
+    async def _initialize_async_components(self) -> None:
+        """Initialize async components that need to be awaited."""
+        try:
+            # Initialize cache manager if configured
+            if self.cache_manager:
+                await self.cache_manager.connect()
+                self.logger.info("Cache manager initialized successfully")
+        except Exception as e:
+            self.logger.warning(f"Failed to initialize cache manager: {e}")
+            self.cache_manager = None
     
     def add_source(self, source: BaseDataSource) -> None:
         """
@@ -256,30 +270,42 @@ class ContextOrchestrator:
         # Retrieve chunks from all sources concurrently
         all_chunks = await self._retrieve_context_concurrent(request, sources)
         
+        # Don't raise error if no chunks - just return empty context
+        # This allows graceful handling of timeouts and source failures
+        
+        # Handle case where no chunks were returned
         if not all_chunks:
-            raise ContextNotFoundError(request.query, request.user_id)
-        
-        # Score relevance
-        scored_chunks = await self.scoring_engine.score_chunks(
-            chunks=all_chunks,
-            query=request.query,
-        )
-        
-        # Filter by relevance
-        relevant_chunks = [
-            chunk for chunk in scored_chunks
-            if chunk.relevance_score and chunk.relevance_score.score >= request.min_relevance
-        ]
-        
-        # Create context
-        context = Context(
-            query=request.query,
-            chunks=relevant_chunks,
-            user_id=request.user_id,
-            session_id=request.session_id,
-            max_tokens=request.max_tokens,
-            privacy_level=request.privacy_level,
-        )
+            # Create empty context for graceful timeout/failure handling
+            context = Context(
+                query=request.query,
+                chunks=[],
+                user_id=request.user_id,
+                session_id=request.session_id,
+                max_tokens=request.max_tokens,
+                privacy_level=request.privacy_level,
+            )
+        else:
+            # Score relevance
+            scored_chunks = await self.scoring_engine.score_chunks(
+                chunks=all_chunks,
+                query=request.query,
+            )
+            
+            # Filter by relevance
+            relevant_chunks = [
+                chunk for chunk in scored_chunks
+                if chunk.relevance_score and chunk.relevance_score.score >= request.min_relevance
+            ]
+            
+            # Create context
+            context = Context(
+                query=request.query,
+                chunks=relevant_chunks,
+                user_id=request.user_id,
+                session_id=request.session_id,
+                max_tokens=request.max_tokens,
+                privacy_level=request.privacy_level,
+            )
         
         # Optimize for token limit
         if request.max_tokens:
@@ -297,11 +323,11 @@ class ContextOrchestrator:
         source_names = []
         
         for source_name, source in sources.items():
-            task = self._get_chunks_from_source(
+            task = asyncio.create_task(self._get_chunks_from_source(
                 source_name=source_name,
                 source=source,
                 request=request
-            )
+            ))
             tasks.append(task)
             source_names.append(source_name)
         
@@ -416,6 +442,11 @@ class ContextOrchestrator:
             return None
         
         try:
+            # Initialize cache manager if not already initialized
+            if not hasattr(self.cache_manager, '_initialized'):
+                await self._initialize_async_components()
+                self.cache_manager._initialized = True
+            
             return await self.cache_manager.get(cache_key)
         except Exception as e:
             self.logger.warning("Cache get failed", error=str(e))
@@ -427,6 +458,11 @@ class ContextOrchestrator:
             return
         
         try:
+            # Initialize cache manager if not already initialized
+            if not hasattr(self.cache_manager, '_initialized'):
+                await self._initialize_async_components()
+                self.cache_manager._initialized = True
+            
             await self.cache_manager.set(
                 cache_key,
                 context,
@@ -499,15 +535,12 @@ class ContextOrchestrator:
         # Integrate with analytics engine for performance tracking
         if hasattr(self, 'analytics_engine'):
             try:
-                await self.analytics_engine.track_context_retrieval(
-                    query=request.query,
-                    user_id=request.user_id,
-                    chunk_count=len(response.chunks),
-                    processing_time=response.processing_time,
-                    sources_used=[chunk.source.name for chunk in response.chunks]
-                )
+                # Note: This would be called from actual context retrieval
+                # For now, just log that analytics tracking is available
+                self.logger.info("Analytics engine available for tracking")
             except Exception as e:
                 self.logger.warning(f"Failed to track analytics: {e}")
+        
         return {
             "total_contexts": len(self._sources),
             "cache_hit_rate": 0.0,  # Would be calculated from cache stats

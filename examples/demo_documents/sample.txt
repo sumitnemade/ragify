@@ -1,0 +1,10 @@
+Ragify Document Processing Demo
+
+This is a sample text document demonstrating the text processing capabilities.
+
+Key Features:
+- Simple text extraction
+- Chunking and processing
+- Query-based retrieval
+
+The framework can handle various text formats including .txt and .md files.
