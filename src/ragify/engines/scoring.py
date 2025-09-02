@@ -125,6 +125,30 @@ class ContextScoringEngine:
             'use_bootstrap': True,
             'use_t_distribution': True,
             'use_weighted_stats': True,
+            'use_bayesian': True,
+            'use_jackknife': True,
+            'use_monte_carlo': True,
+            'max_bootstrap_samples': 10000,
+            'bootstrap_strategies': ['percentile', 'bca', 'abc', 'studentized'],
+            'robust_estimation': True,
+            'outlier_detection': True,
+            'normality_testing': True,
+            'heteroscedasticity_testing': True,
+            'autocorrelation_testing': True,
+            'confidence_interval_methods': ['bootstrap', 't_distribution', 'normal', 'weighted', 'bayesian', 'jackknife', 'monte_carlo'],
+            'fallback_methods': ['simple', 'robust', 'nonparametric'],
+            'validation_thresholds': {
+                'min_confidence_width': 0.01,
+                'max_confidence_width': 0.5,
+                'min_sample_quality': 0.7,
+                'max_outlier_ratio': 0.2
+            },
+            'performance_optimization': {
+                'parallel_bootstrap': True,
+                'adaptive_sampling': True,
+                'early_stopping': True,
+                'cache_results': True
+            }
         }
         
         # Historical scoring data for statistical analysis
@@ -1209,41 +1233,89 @@ class ContextScoringEngine:
         score_values: List[float],
         ensemble_score: float,
     ) -> Optional[tuple[float, float]]:
-        """Calculate bootstrap confidence interval."""
+        """Calculate enhanced bootstrap confidence interval with multiple strategies."""
         try:
-            if len(score_values) < 5:
+            # Validate data quality
+            if not self._validate_data_quality(score_values):
+                self.logger.warning("Data quality validation failed for bootstrap CI")
                 return None
             
-            # Bootstrap function
-            def bootstrap_statistic(data):
-                # Sample with replacement
-                bootstrap_sample = np.random.choice(data, size=len(data), replace=True)
-                return np.mean(bootstrap_sample)
+            n = len(score_values)
+            if n < self.confidence_config['min_sample_size']:
+                return None
             
-            # Generate bootstrap samples
-            bootstrap_samples = []
-            for _ in range(self.confidence_config['bootstrap_samples']):
-                bootstrap_stat = bootstrap_statistic(score_values)
-                bootstrap_samples.append(bootstrap_stat)
+            # Detect and handle outliers if enabled
+            if self.confidence_config['outlier_detection']:
+                clean_data, outlier_info = self._detect_and_handle_outliers(score_values)
+                if outlier_info['outlier_ratio'] > self.confidence_config['validation_thresholds']['max_outlier_ratio']:
+                    self.logger.warning(f"High outlier ratio detected: {outlier_info['outlier_ratio']:.3f}")
+                score_values = clean_data
+                n = len(score_values)
+                if n < self.confidence_config['min_sample_size']:
+                    return None
             
-            # Calculate confidence interval
-            alpha = 1 - self.confidence_config['default_confidence_level']
-            lower_percentile = (alpha / 2) * 100
-            upper_percentile = (1 - alpha / 2) * 100
+            # Test normality if enabled
+            if self.confidence_config['normality_testing']:
+                normality_result = self._test_normality(score_values)
+                if not normality_result['is_normal']:
+                    self.logger.info(f"Data appears non-normal (p={normality_result['p_value']:.4f})")
             
-            lower_bound = np.percentile(bootstrap_samples, lower_percentile)
-            upper_bound = np.percentile(bootstrap_samples, upper_percentile)
+            # Select optimal bootstrap strategy
+            normality_result = self._test_normality(score_values) if self.confidence_config['normality_testing'] else {'is_normal': True, 'p_value': 1.0}
+            strategy = self._select_bootstrap_strategy(score_values, normality_result)
+            self.logger.info(f"Selected bootstrap strategy: {strategy}")
             
-            # Adjust bounds relative to ensemble score
-            center_offset = ensemble_score - np.mean(bootstrap_samples)
-            lower_bound = max(0.0, lower_bound + center_offset)
-            upper_bound = min(1.0, upper_bound + center_offset)
+            # Calculate confidence interval using selected strategy
+            ci_result = None
             
-            return float(lower_bound), float(upper_bound)
+            if strategy == 'percentile':
+                ci_result = await self._percentile_bootstrap(score_values, ensemble_score)
+            elif strategy == 'bca':
+                ci_result = await self._bca_bootstrap(score_values, ensemble_score)
+            elif strategy == 'abc':
+                ci_result = await self._abc_bootstrap(score_values, ensemble_score)
+            elif strategy == 'studentized':
+                ci_result = await self._studentized_bootstrap(score_values, ensemble_score)
+            else:
+                # Fallback to percentile method
+                ci_result = await self._percentile_bootstrap(score_values, ensemble_score)
+            
+            if ci_result is None:
+                self.logger.warning("Primary bootstrap strategy failed, trying fallback methods")
+                # Try fallback methods
+                for fallback in self.confidence_config['fallback_methods']:
+                    if fallback == 'simple':
+                        ci_result = await self._percentile_bootstrap(score_values, ensemble_score)
+                    elif fallback == 'robust':
+                        ci_result = await self._calculate_robust_confidence_interval(score_values, ensemble_score)
+                    elif fallback == 'nonparametric':
+                        # Use basic percentile as nonparametric fallback
+                        ci_result = await self._percentile_bootstrap(score_values, ensemble_score)
+                    
+                    if ci_result is not None:
+                        self.logger.info(f"Fallback method '{fallback}' succeeded")
+                        break
+            
+            if ci_result is None:
+                self.logger.error("All bootstrap methods failed")
+                return None
+            
+            # Validate the confidence interval
+            if not self._validate_confidence_interval(ci_result, score_values):
+                self.logger.warning("Generated confidence interval failed validation")
+                # Try to generate a valid one using robust method
+                ci_result = await self._calculate_robust_confidence_interval(score_values, ensemble_score)
+            
+            return ci_result
             
         except Exception as e:
             self.logger.warning(f"Failed to calculate bootstrap confidence interval: {e}")
-            return None
+            # Final fallback to robust method
+            try:
+                return await self._calculate_robust_confidence_interval(score_values, ensemble_score)
+            except Exception as fallback_error:
+                self.logger.error(f"Even fallback method failed: {fallback_error}")
+                return None
     
     async def _calculate_t_confidence_interval(
         self,
@@ -1285,7 +1357,7 @@ class ContextScoringEngine:
         """Calculate normal distribution confidence interval."""
         try:
             n = len(score_values)
-            if n < 1:
+            if n < 2:  # Require at least 2 samples for statistical validity
                 return None
             
             # Calculate sample statistics
@@ -1369,6 +1441,354 @@ class ContextScoringEngine:
             
         except Exception as e:
             self.logger.warning(f"Failed to combine confidence intervals: {e}")
+            return 0.0, 1.0
+    
+    # ===== ENHANCED CONFIDENCE INTERVAL HELPER METHODS =====
+    
+    def _validate_data_quality(self, score_values: List[float]) -> bool:
+        """Validate data quality for statistical analysis."""
+        try:
+            if not score_values or len(score_values) < 2:
+                return False
+            
+            # Check for finite values
+            if not all(np.isfinite(score) for score in score_values):
+                return False
+            
+            # Check for reasonable range (0-1 for scores)
+            if not all(0.0 <= score <= 1.0 for score in score_values):
+                return False
+            
+            # Check for sufficient variation
+            if np.std(score_values) < 1e-10:
+                return False
+            
+            return True
+            
+        except Exception as e:
+            self.logger.warning(f"Data quality validation failed: {e}")
+            return False
+    
+    def _detect_and_handle_outliers(self, score_values: List[float]) -> tuple[List[float], dict]:
+        """Detect and handle outliers using multiple methods."""
+        try:
+            if len(score_values) < 4:
+                return score_values, {'outlier_ratio': 0.0, 'method': 'insufficient_data'}
+            
+            # Method 1: IQR-based outlier detection
+            q1 = np.percentile(score_values, 25)
+            q3 = np.percentile(score_values, 75)
+            iqr = q3 - q1
+            lower_bound = q1 - 1.5 * iqr
+            upper_bound = q3 + 1.5 * iqr
+            
+            outliers_iqr = [i for i, score in enumerate(score_values) 
+                           if score < lower_bound or score > upper_bound]
+            
+            # Method 2: Z-score based outlier detection
+            mean_score = np.mean(score_values)
+            std_score = np.std(score_values)
+            if std_score > 0:
+                z_scores = [(score - mean_score) / std_score for score in score_values]
+                outliers_zscore = [i for i, z in enumerate(z_scores) if abs(z) > 2.5]
+            else:
+                outliers_zscore = []
+            
+            # Method 3: Modified Z-score (more robust)
+            median_score = np.median(score_values)
+            mad = np.median([abs(score - median_score) for score in score_values])
+            if mad > 0:
+                modified_z_scores = [0.6745 * (score - median_score) / mad for score in score_values]
+                outliers_mzscore = [i for i, mz in enumerate(modified_z_scores) if abs(mz) > 3.5]
+            else:
+                outliers_mzscore = []
+            
+            # Combine outlier detection methods
+            all_outlier_indices = set(outliers_iqr) | set(outliers_zscore) | set(outliers_mzscore)
+            outlier_ratio = len(all_outlier_indices) / len(score_values)
+            
+            # Handle outliers based on configuration
+            if outlier_ratio <= self.confidence_config['validation_thresholds']['max_outlier_ratio']:
+                # Remove outliers for analysis
+                clean_scores = [score for i, score in enumerate(score_values) 
+                              if i not in all_outlier_indices]
+                if len(clean_scores) < 2:
+                    clean_scores = score_values  # Keep original if too many outliers
+            else:
+                # Too many outliers, use robust methods
+                clean_scores = score_values
+            
+            outlier_info = {
+                'outlier_ratio': outlier_ratio,
+                'outlier_indices': list(all_outlier_indices),
+                'method': 'combined_detection',
+                'iqr_outliers': len(outliers_iqr),
+                'zscore_outliers': len(outliers_zscore),
+                'mzscore_outliers': len(outliers_mzscore)
+            }
+            
+            return clean_scores, outlier_info
+            
+        except Exception as e:
+            self.logger.warning(f"Outlier detection failed: {e}")
+            return score_values, {'outlier_ratio': 0.0, 'method': 'error_fallback'}
+    
+    def _test_normality(self, score_values: List[float]) -> dict:
+        """Test for normality using multiple statistical tests."""
+        try:
+            if len(score_values) < 3:
+                return {'is_normal': False, 'p_value': 0.0, 'method': 'insufficient_data'}
+            
+            # Method 1: Shapiro-Wilk test (most powerful for small samples)
+            try:
+                from scipy.stats import shapiro
+                shapiro_stat, shapiro_p = shapiro(score_values)
+                shapiro_normal = shapiro_p > 0.05
+            except ImportError:
+                shapiro_stat, shapiro_p = 0.0, 0.0
+                shapiro_normal = False
+            
+            # Method 2: Anderson-Darling test
+            try:
+                from scipy.stats import anderson
+                anderson_result = anderson(score_values)
+                anderson_normal = anderson_result.statistic < anderson_result.critical_values[2]  # 5% level
+                anderson_p = 0.05 if anderson_normal else 0.01
+            except ImportError:
+                anderson_result = None
+                anderson_normal = False
+                anderson_p = 0.0
+            
+            # Method 3: Kolmogorov-Smirnov test
+            try:
+                from scipy.stats import kstest
+                ks_stat, ks_p = kstest(score_values, 'norm', 
+                                     args=(np.mean(score_values), np.std(score_values)))
+                ks_normal = ks_p > 0.05
+            except ImportError:
+                ks_stat, ks_p = 0.0, 0.0
+                ks_normal = False
+            
+            # Combine test results
+            normality_tests = [shapiro_normal, anderson_normal, ks_normal]
+            normal_count = sum(normality_tests)
+            is_normal = normal_count >= 2  # At least 2 out of 3 tests should pass
+            
+            # Calculate combined p-value (geometric mean)
+            p_values = [shapiro_p, anderson_p, ks_p]
+            valid_p_values = [p for p in p_values if p > 0]
+            if valid_p_values:
+                combined_p = np.exp(np.mean(np.log(valid_p_values)))
+            else:
+                combined_p = 0.0
+            
+            return {
+                'is_normal': is_normal,
+                'p_value': combined_p,
+                'method': 'combined_tests',
+                'shapiro': {'statistic': shapiro_stat, 'p_value': shapiro_p, 'normal': shapiro_normal},
+                'anderson': {'statistic': anderson_result.statistic if anderson_result else 0.0, 'p_value': anderson_p, 'normal': anderson_normal},
+                'ks': {'statistic': ks_stat, 'p_value': ks_p, 'normal': ks_normal},
+                'normal_count': normal_count,
+                'total_tests': len(normality_tests)
+            }
+            
+        except Exception as e:
+            self.logger.warning(f"Normality testing failed: {e}")
+            return {'is_normal': False, 'p_value': 0.0, 'method': 'error_fallback'}
+    
+    def _test_homoscedasticity(self, score_values: List[float]) -> dict:
+        """Test for homoscedasticity (constant variance)."""
+        try:
+            if len(score_values) < 4:
+                return {'is_homoscedastic': True, 'p_value': 1.0, 'method': 'insufficient_data'}
+            
+            # Method 1: Levene's test for homogeneity of variances
+            try:
+                from scipy.stats import levene
+                # Split data into two groups for testing
+                mid_point = len(score_values) // 2
+                group1 = score_values[:mid_point]
+                group2 = score_values[mid_point:]
+                
+                if len(group1) >= 2 and len(group2) >= 2:
+                    levene_stat, levene_p = levene(group1, group2)
+                    is_homoscedastic = levene_p > 0.05
+                else:
+                    levene_stat, levene_p = 0.0, 1.0
+                    is_homoscedastic = True
+            except ImportError:
+                levene_stat, levene_p = 0.0, 1.0
+                is_homoscedastic = True
+            
+            # Method 2: Bartlett's test (assumes normality)
+            try:
+                from scipy.stats import bartlett
+                if len(group1) >= 2 and len(group2) >= 2:
+                    bartlett_stat, bartlett_p = bartlett(group1, group2)
+                    bartlett_homoscedastic = bartlett_p > 0.05
+                else:
+                    bartlett_stat, bartlett_p = 0.0, 1.0
+                    bartlett_homoscedastic = True
+            except ImportError:
+                bartlett_stat, bartlett_p = 0.0, 1.0
+                bartlett_homoscedastic = True
+            
+            # Combine test results
+            homoscedastic_tests = [is_homoscedastic, bartlett_homoscedastic]
+            homoscedastic_count = sum(homoscedastic_tests)
+            is_homoscedastic_final = homoscedastic_count >= 1  # At least 1 test should pass
+            
+            # Calculate combined p-value
+            p_values = [levene_p, bartlett_p]
+            valid_p_values = [p for p in p_values if p > 0]
+            if valid_p_values:
+                combined_p = np.exp(np.mean(np.log(valid_p_values)))
+            else:
+                combined_p = 1.0
+            
+            return {
+                'is_homoscedastic': is_homoscedastic_final,
+                'p_value': combined_p,
+                'method': 'combined_tests',
+                'levene': {'statistic': levene_stat, 'p_value': levene_p, 'homoscedastic': is_homoscedastic},
+                'bartlett': {'statistic': bartlett_stat, 'p_value': bartlett_p, 'homoscedastic': bartlett_homoscedastic},
+                'homoscedastic_count': homoscedastic_count,
+                'total_tests': len(homoscedastic_tests)
+            }
+            
+        except Exception as e:
+            self.logger.warning(f"Homoscedasticity testing failed: {e}")
+            return {'is_homoscedastic': True, 'p_value': 1.0, 'method': 'error_fallback'}
+    
+    def _select_bootstrap_strategy(self, score_values: List[float], normality_test: dict) -> str:
+        """Select optimal bootstrap strategy based on data characteristics."""
+        try:
+            n = len(score_values)
+            
+            if n < 5:
+                return 'percentile'
+            elif n < 8:
+                return 'percentile'
+            elif n < 10:
+                return 'abc' if normality_test['is_normal'] else 'percentile'
+            elif n < 15:
+                return 'bca' if normality_test['is_normal'] else 'abc'
+            else:
+                if normality_test['is_normal']:
+                    return 'bca'  # Most accurate for normal data
+                else:
+                    return 'studentized'  # Most robust for non-normal data
+                    
+        except Exception as e:
+            self.logger.warning(f"Bootstrap strategy selection failed: {e}")
+            return 'percentile'
+    
+    async def _combine_bootstrap_results(self, bootstrap_results: dict, score_values: List[float], ensemble_score: float) -> tuple[float, float]:
+        """Combine multiple bootstrap confidence interval results."""
+        try:
+            if not bootstrap_results:
+                return 0.0, 1.0
+            
+            # Extract confidence intervals
+            intervals = list(bootstrap_results.values())
+            
+            # Calculate robust statistics
+            lower_bounds = [ci[0] for ci in intervals]
+            upper_bounds = [ci[1] for ci in intervals]
+            
+            # Use trimmed mean for robust combination
+            trim_percent = 0.1
+            n_trim = max(1, int(len(intervals) * trim_percent))
+            
+            sorted_lower = sorted(lower_bounds)
+            sorted_upper = sorted(upper_bounds)
+            
+            trimmed_lower = sorted_lower[n_trim:-n_trim] if len(sorted_lower) > 2 * n_trim else sorted_lower
+            trimmed_upper = sorted_upper[n_trim:-n_trim] if len(sorted_upper) > 2 * n_trim else sorted_upper
+            
+            combined_lower = np.mean(trimmed_lower)
+            combined_upper = np.mean(trimmed_upper)
+            
+            # Ensure bounds are valid
+            combined_lower = max(0.0, min(combined_lower, combined_upper))
+            combined_upper = min(1.0, max(combined_upper, combined_lower))
+            
+            return float(combined_lower), float(combined_upper)
+            
+        except Exception as e:
+            self.logger.warning(f"Bootstrap results combination failed: {e}")
+            return 0.0, 1.0
+    
+    def _validate_confidence_interval(self, confidence_interval: tuple[float, float], score_values: List[float]) -> bool:
+        """Validate confidence interval quality."""
+        try:
+            lower_bound, upper_bound = confidence_interval
+            
+            # Check bounds are finite
+            if not (np.isfinite(lower_bound) and np.isfinite(upper_bound)):
+                return False
+            
+            # Check bounds are in valid range
+            if not (0.0 <= lower_bound <= 1.0 and 0.0 <= upper_bound <= 1.0):
+                return False
+            
+            # Check lower bound is less than upper bound
+            if lower_bound >= upper_bound:
+                return False
+            
+            # Check confidence interval width
+            width = upper_bound - lower_bound
+            if width < self.confidence_config['validation_thresholds']['min_confidence_width']:
+                return False
+            if width > self.confidence_config['validation_thresholds']['max_confidence_width']:
+                return False
+            
+            # Check bounds are reasonable relative to data
+            if score_values:
+                data_mean = np.mean(score_values)
+                if abs(lower_bound - data_mean) > 0.5 or abs(upper_bound - data_mean) > 0.5:
+                    return False
+            
+            return True
+            
+        except Exception as e:
+            self.logger.warning(f"Confidence interval validation failed: {e}")
+            return False
+    
+    async def _calculate_robust_confidence_interval(self, score_values: List[float], ensemble_score: float) -> tuple[float, float]:
+        """Calculate robust confidence interval using nonparametric methods."""
+        try:
+            if len(score_values) < 2:
+                return 0.0, 1.0
+            
+            # Use median and MAD for robust estimation
+            median_score = np.median(score_values)
+            mad = np.median([abs(score - median_score) for score in score_values])
+            
+            if mad <= 0:
+                # Fallback to simple method
+                return await self._calculate_simple_confidence_interval(
+                    {'scores': score_values}, ensemble_score
+                )
+            
+            # Calculate robust confidence interval
+            # For 95% confidence, use 1.96 * MAD / sqrt(n)
+            n = len(score_values)
+            robust_se = 1.96 * mad / np.sqrt(n)
+            
+            lower_bound = max(0.0, median_score - robust_se)
+            upper_bound = min(1.0, median_score + robust_se)
+            
+            # Adjust bounds relative to ensemble score
+            center_offset = ensemble_score - median_score
+            lower_bound = max(0.0, lower_bound + center_offset)
+            upper_bound = min(1.0, upper_bound + center_offset)
+            
+            return float(lower_bound), float(upper_bound)
+            
+        except Exception as e:
+            self.logger.warning(f"Robust confidence interval calculation failed: {e}")
             return 0.0, 1.0
     
     async def update_scoring_weights(self, new_weights: dict) -> None:
@@ -2170,4 +2590,252 @@ class ContextScoringEngine:
             
         except Exception as e:
             self.logger.warning(f"Failed to get query embedding: {e}")
+            return None
+    
+    async def _percentile_bootstrap(
+        self,
+        score_values: List[float],
+        ensemble_score: float,
+        confidence_level: float = None
+    ) -> Optional[tuple[float, float]]:
+        """Calculate percentile bootstrap confidence interval."""
+        try:
+            if confidence_level is None:
+                confidence_level = self.confidence_config['default_confidence_level']
+            
+            n = len(score_values)
+            if n < self.confidence_config['min_sample_size']:
+                return None
+            
+            # Generate bootstrap samples
+            bootstrap_samples = []
+            n_bootstrap = min(self.confidence_config['bootstrap_samples'], 
+                            self.confidence_config['max_bootstrap_samples'])
+            
+            for _ in range(n_bootstrap):
+                # Resample with replacement
+                bootstrap_sample = np.random.choice(score_values, size=n, replace=True)
+                bootstrap_samples.append(np.mean(bootstrap_sample))
+            
+            # Calculate confidence interval using percentiles
+            alpha = 1 - confidence_level
+            lower_percentile = (alpha / 2) * 100
+            upper_percentile = (1 - alpha / 2) * 100
+            
+            lower_bound = np.percentile(bootstrap_samples, lower_percentile)
+            upper_bound = np.percentile(bootstrap_samples, upper_percentile)
+            
+            # Adjust for ensemble score
+            center_offset = ensemble_score - np.mean(score_values)
+            lower_bound = max(0.0, lower_bound + center_offset)
+            upper_bound = min(1.0, upper_bound + center_offset)
+            
+            return float(lower_bound), float(upper_bound)
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to calculate percentile bootstrap CI: {e}")
+            return None
+
+    async def _bca_bootstrap(
+        self,
+        score_values: List[float],
+        ensemble_score: float,
+        confidence_level: float = None
+    ) -> Optional[tuple[float, float]]:
+        """Calculate BCa (Bias-corrected and accelerated) bootstrap confidence interval."""
+        try:
+            if confidence_level is None:
+                confidence_level = self.confidence_config['default_confidence_level']
+            
+            n = len(score_values)
+            if n < self.confidence_config['min_sample_size']:
+                return None
+            
+            # Generate bootstrap samples
+            bootstrap_samples = []
+            n_bootstrap = min(self.confidence_config['bootstrap_samples'], 
+                            self.confidence_config['max_bootstrap_samples'])
+            
+            for _ in range(n_bootstrap):
+                bootstrap_sample = np.random.choice(score_values, size=n, replace=True)
+                bootstrap_samples.append(np.mean(bootstrap_sample))
+            
+            # Calculate bias correction
+            original_mean = np.mean(score_values)
+            bootstrap_means = np.array(bootstrap_samples)
+            bias_correction = np.sum(bootstrap_means < original_mean) / len(bootstrap_means)
+            
+            # Calculate acceleration factor using jackknife
+            jackknife_means = []
+            for i in range(n):
+                jackknife_sample = np.delete(score_values, i)
+                jackknife_means.append(np.mean(jackknife_sample))
+            
+            jackknife_means = np.array(jackknife_means)
+            jackknife_mean = np.mean(jackknife_means)
+            acceleration = np.sum((jackknife_mean - jackknife_means) ** 3) / (6 * np.sum((jackknife_mean - jackknife_means) ** 2) ** 1.5)
+            
+            # Calculate BCa confidence interval
+            alpha = 1 - confidence_level
+            z_alpha_2 = norm.ppf(alpha / 2)
+            z_1_alpha_2 = norm.ppf(1 - alpha / 2)
+            
+            # Transform to BCa scale
+            z_lower = bias_correction + (bias_correction + z_alpha_2) / (1 - acceleration * (bias_correction + z_alpha_2))
+            z_upper = bias_correction + (bias_correction + z_1_alpha_2) / (1 - acceleration * (bias_correction + z_1_alpha_2))
+            
+            # Convert back to percentiles
+            lower_percentile = norm.cdf(z_lower) * 100
+            upper_percentile = norm.cdf(z_upper) * 100
+            
+            lower_bound = np.percentile(bootstrap_samples, lower_percentile)
+            upper_bound = np.percentile(bootstrap_samples, upper_percentile)
+            
+            # Adjust for ensemble score
+            center_offset = ensemble_score - original_mean
+            lower_bound = max(0.0, lower_bound + center_offset)
+            upper_bound = min(1.0, upper_bound + center_offset)
+            
+            return float(lower_bound), float(upper_bound)
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to calculate BCa bootstrap CI: {e}")
+            return None
+
+    async def _abc_bootstrap(
+        self,
+        score_values: List[float],
+        ensemble_score: float,
+        confidence_level: float = None
+    ) -> Optional[tuple[float, float]]:
+        """Calculate ABC (Approximate Bootstrap Confidence) interval."""
+        try:
+            if confidence_level is None:
+                confidence_level = self.confidence_config['default_confidence_level']
+            
+            n = len(score_values)
+            if n < self.confidence_config['min_sample_size']:
+                return None
+            
+            # Calculate influence values using infinitesimal jackknife
+            original_mean = np.mean(score_values)
+            influence_values = []
+            
+            for i in range(n):
+                # Calculate influence of each observation
+                influence = (n * original_mean - score_values[i]) / (n - 1) - original_mean
+                influence_values.append(influence)
+            
+            influence_values = np.array(influence_values)
+            
+            # Calculate ABC parameters
+            a = np.sum(influence_values ** 3) / (6 * np.sum(influence_values ** 2) ** 1.5)
+            b = np.sum(influence_values ** 2) / np.sum(influence_values ** 2)
+            
+            # Generate bootstrap samples for variance estimation
+            bootstrap_variances = []
+            n_bootstrap_abc = min(100, self.confidence_config['bootstrap_samples'])  # Use fewer samples for ABC
+            
+            for _ in range(n_bootstrap_abc):
+                bootstrap_sample = np.random.choice(score_values, size=n, replace=True)
+                bootstrap_variances.append(np.var(bootstrap_sample))
+            
+            bootstrap_var = np.mean(bootstrap_variances)
+            
+            # Calculate ABC confidence interval
+            alpha = 1 - confidence_level
+            z_alpha_2 = norm.ppf(alpha / 2)
+            z_1_alpha_2 = norm.ppf(1 - alpha / 2)
+            
+            # Transform to ABC scale
+            z_lower = z_alpha_2 + a * (z_alpha_2 ** 2 - 1) / 6
+            z_upper = z_1_alpha_2 + a * (z_1_alpha_2 ** 2 - 1) / 6
+            
+            # Calculate bounds
+            margin_lower = z_lower * np.sqrt(bootstrap_var / n)
+            margin_upper = z_upper * np.sqrt(bootstrap_var / n)
+            
+            lower_bound = original_mean - margin_lower
+            upper_bound = original_mean + margin_upper
+            
+            # Adjust for ensemble score
+            center_offset = ensemble_score - original_mean
+            lower_bound = max(0.0, lower_bound + center_offset)
+            upper_bound = min(1.0, upper_bound + center_offset)
+            
+            return float(lower_bound), float(upper_bound)
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to calculate ABC bootstrap CI: {e}")
+            return None
+
+    async def _studentized_bootstrap(
+        self,
+        score_values: List[float],
+        ensemble_score: float,
+        confidence_level: float = None
+    ) -> Optional[tuple[float, float]]:
+        """Calculate Studentized bootstrap confidence interval."""
+        try:
+            if confidence_level is None:
+                confidence_level = self.confidence_config['default_confidence_level']
+            
+            n = len(score_values)
+            if n < self.confidence_config['min_sample_size']:
+                return None
+            
+            # Calculate original statistics
+            original_mean = np.mean(score_values)
+            original_std = np.std(score_values, ddof=1)
+            original_se = original_std / np.sqrt(n)
+            
+            # Generate bootstrap samples
+            bootstrap_means = []
+            bootstrap_stds = []
+            n_bootstrap = min(self.confidence_config['bootstrap_samples'], 
+                            self.confidence_config['max_bootstrap_samples'])
+            
+            for _ in range(n_bootstrap):
+                bootstrap_sample = np.random.choice(score_values, size=n, replace=True)
+                bootstrap_means.append(np.mean(bootstrap_sample))
+                bootstrap_stds.append(np.std(bootstrap_sample, ddof=1))
+            
+            bootstrap_means = np.array(bootstrap_means)
+            bootstrap_stds = np.array(bootstrap_stds)
+            
+            # Calculate studentized statistics
+            studentized_stats = []
+            for i in range(n_bootstrap):
+                if bootstrap_stds[i] > 0:
+                    # Studentized statistic: (bootstrap_mean - original_mean) / bootstrap_se
+                    bootstrap_se = bootstrap_stds[i] / np.sqrt(n)
+                    studentized_stat = (bootstrap_means[i] - original_mean) / bootstrap_se
+                    studentized_stats.append(studentized_stat)
+            
+            if len(studentized_stats) < 10:  # Need sufficient valid statistics
+                return None
+            
+            studentized_stats = np.array(studentized_stats)
+            
+            # Calculate confidence interval using studentized percentiles
+            alpha = 1 - confidence_level
+            lower_percentile = (alpha / 2) * 100
+            upper_percentile = (1 - alpha / 2) * 100
+            
+            t_lower = np.percentile(studentized_stats, lower_percentile)
+            t_upper = np.percentile(studentized_stats, upper_percentile)
+            
+            # Calculate bounds using original standard error
+            lower_bound = original_mean - t_upper * original_se
+            upper_bound = original_mean - t_lower * original_se
+            
+            # Adjust for ensemble score
+            center_offset = ensemble_score - original_mean
+            lower_bound = max(0.0, lower_bound + center_offset)
+            upper_bound = min(1.0, upper_bound + center_offset)
+            
+            return float(lower_bound), float(upper_bound)
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to calculate studentized bootstrap CI: {e}")
             return None
