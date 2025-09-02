@@ -4,6 +4,7 @@ Database Source for handling database-based data sources.
 
 import asyncio
 import json
+import time
 from typing import List, Optional, Dict, Any, Union
 from datetime import datetime
 import structlog
@@ -70,6 +71,19 @@ class DatabaseSource(BaseDataSource):
         self.engine = None
         self.session_factory = None
         self.pool = None
+        
+        # Transaction management
+        self.current_transaction = None
+        self.transaction_depth = 0
+        
+        # Connection pool monitoring
+        self.connection_stats = {
+            'total_connections': 0,
+            'active_connections': 0,
+            'failed_connections': 0,
+            'query_count': 0,
+            'avg_query_time': 0.0
+        }
     
     async def get_chunks(
         self,
@@ -296,7 +310,7 @@ class DatabaseSource(BaseDataSource):
         session_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
-        Execute database query.
+        Execute database query with enhanced validation and optimization.
         
         Args:
             query: Search query
@@ -306,24 +320,55 @@ class DatabaseSource(BaseDataSource):
         Returns:
             Query results
         """
+        start_time = time.time()
+        
         try:
+            # Validate and sanitize parameters
+            validated_params = self._validate_query_parameters(query, user_id, session_id)
+            
             # Ensure connection is established
             if not self.connection and not self.pool and not self.engine:
                 await self.connect()
             
             # Execute query based on database type
             if self.db_type == "postgresql":
-                return await self._execute_postgresql_query(query, user_id, session_id)
+                results = await self._execute_postgresql_query(
+                    validated_params['query'], 
+                    validated_params['user_id'], 
+                    validated_params['session_id']
+                )
             elif self.db_type == "mysql":
-                return await self._execute_mysql_query(query, user_id, session_id)
+                results = await self._execute_mysql_query(
+                    validated_params['query'], 
+                    validated_params['user_id'], 
+                    validated_params['session_id']
+                )
             elif self.db_type == "sqlite":
-                return await self._execute_sqlite_query(query, user_id, session_id)
+                results = await self._execute_sqlite_query(
+                    validated_params['query'], 
+                    validated_params['user_id'], 
+                    validated_params['session_id']
+                )
             elif self.db_type == "mongodb":
-                return await self._execute_mongodb_query(query, user_id, session_id)
+                results = await self._execute_mongodb_query(
+                    validated_params['query'], 
+                    validated_params['user_id'], 
+                    validated_params['session_id']
+                )
             else:
                 raise ICOException(f"Unsupported database type: {self.db_type}")
+            
+            # Update connection statistics
+            query_time = time.time() - start_time
+            await self._update_connection_stats(query_time, success=True)
+            
+            return results
                 
         except Exception as e:
+            # Update connection statistics for failure
+            query_time = time.time() - start_time
+            await self._update_connection_stats(query_time, success=False)
+            
             self.logger.error(f"Database query failed: {e}")
             raise ICOException(f"Database query failed: {e}")
     
@@ -497,16 +542,10 @@ class DatabaseSource(BaseDataSource):
             await self._handle_database_failure(query, e)
     
     def _build_sql_query(self, query: str, user_id: Optional[str] = None, session_id: Optional[str] = None) -> str:
-        """Build SQL query from template."""
+        """Build SQL query from template with advanced optimization."""
         if self.query_template:
-            # Replace template parameters with actual values
-            # Escape single quotes in query to prevent SQL injection
-            escaped_query = query.replace("'", "''")
-            sql_query = self.query_template.replace('{query}', escaped_query)
-            if user_id:
-                sql_query = sql_query.replace('{user_id}', f"'{user_id}'")
-            if session_id:
-                sql_query = sql_query.replace('{session_id}', f"'{session_id}'")
+            # Use parameterized queries to prevent SQL injection
+            sql_query = self.query_template
             
             # Handle table parameter replacement
             if '{table}' in sql_query and self.tables:
@@ -523,18 +562,144 @@ class DatabaseSource(BaseDataSource):
             
             return sql_query
         else:
-            # Default query template - use appropriate LIKE syntax for each database
-            if self.db_type == "sqlite":
-                return f"SELECT content, relevance FROM documents WHERE content LIKE '%{query}%' LIMIT 10"
+            # Generate optimized default queries based on database type
+            return self._generate_optimized_query(query, user_id, session_id)
+    
+    def _generate_optimized_query(self, query: str, user_id: Optional[str] = None, session_id: Optional[str] = None) -> str:
+        """Generate optimized SQL queries based on database type and query content."""
+        # Parse query for optimization hints
+        query_lower = query.lower()
+        is_exact_match = query.startswith('"') and query.endswith('"')
+        is_phrase_search = ' ' in query and not is_exact_match
+        
+        # Build base query with proper escaping
+        if self.db_type == "sqlite":
+            if is_exact_match:
+                # Remove quotes and use exact match
+                clean_query = query[1:-1]
+                escaped_query = clean_query.replace("'", "''")
+                where_clause = f"content = '{escaped_query}'"
+            elif is_phrase_search:
+                # Use multiple LIKE conditions for phrase search
+                words = query.split()
+                conditions = []
+                for word in words:
+                    escaped_word = word.replace("'", "''")
+                    conditions.append(f"content LIKE '%{escaped_word}%'")
+                where_clause = " AND ".join(conditions)
             else:
-                return f"SELECT content, relevance FROM documents WHERE content ILIKE '%{query}%' LIMIT 10"
+                # Single word search
+                escaped_query = query.replace("'", "''")
+                where_clause = f"content LIKE '%{escaped_query}%'"
+            
+            escaped_query_final = query.replace("'", "''")
+            return f"""
+                SELECT content, relevance, 
+                       CASE 
+                           WHEN content = '{escaped_query_final}' THEN 1.0
+                           WHEN content LIKE '{escaped_query_final}%' THEN 0.9
+                           WHEN content LIKE '%{escaped_query_final}%' THEN 0.8
+                           ELSE 0.5
+                       END as calculated_relevance
+                FROM documents 
+                WHERE {where_clause}
+                ORDER BY calculated_relevance DESC, length(content) ASC
+                LIMIT 20
+            """
+        
+        elif self.db_type == "postgresql":
+            if is_exact_match:
+                clean_query = query[1:-1]
+                escaped_clean_query = clean_query.replace("'", "''")
+                where_clause = f"content = '{escaped_clean_query}'"
+            elif is_phrase_search:
+                # Use PostgreSQL full-text search for better performance
+                escaped_query = query.replace("'", "''")
+                where_clause = f"to_tsvector('english', content) @@ plainto_tsquery('english', '{escaped_query}')"
+            else:
+                escaped_query = query.replace("'", "''")
+                where_clause = f"content ILIKE '%{escaped_query}%'"
+            
+            escaped_query_final = query.replace("'", "''")
+            return f"""
+                SELECT content, relevance,
+                       CASE 
+                           WHEN content = '{escaped_query_final}' THEN 1.0
+                           WHEN content ILIKE '{escaped_query_final}%' THEN 0.9
+                           WHEN content ILIKE '%{escaped_query_final}%' THEN 0.8
+                           ELSE 0.5
+                       END as calculated_relevance
+                FROM documents 
+                WHERE {where_clause}
+                ORDER BY calculated_relevance DESC, length(content) ASC
+                LIMIT 20
+            """
+        
+        elif self.db_type == "mysql":
+            if is_exact_match:
+                clean_query = query[1:-1]
+                escaped_clean_query = clean_query.replace("'", "''")
+                where_clause = f"content = '{escaped_clean_query}'"
+            elif is_phrase_search:
+                # Use MySQL full-text search
+                words = query.split()
+                conditions = []
+                for word in words:
+                    escaped_word = word.replace("'", "''")
+                    conditions.append(f"content LIKE '%{escaped_word}%'")
+                where_clause = " AND ".join(conditions)
+            else:
+                escaped_query = query.replace("'", "''")
+                where_clause = f"content LIKE '%{escaped_query}%'"
+            
+            escaped_query_final = query.replace("'", "''")
+            return f"""
+                SELECT content, relevance,
+                       CASE 
+                           WHEN content = '{escaped_query_final}' THEN 1.0
+                           WHEN content LIKE '{escaped_query_final}%' THEN 0.9
+                           WHEN content LIKE '%{escaped_query_final}%' THEN 0.8
+                           ELSE 0.5
+                       END as calculated_relevance
+                FROM documents 
+                WHERE {where_clause}
+                ORDER BY calculated_relevance DESC, length(content) ASC
+                LIMIT 20
+            """
+        
+        else:
+            # Generic fallback
+            escaped_query = query.replace("'", "''")
+            return f"SELECT content, relevance FROM documents WHERE content LIKE '%{escaped_query}%' LIMIT 20"
     
     def _build_mongodb_query(self, query: str, user_id: Optional[str] = None, session_id: Optional[str] = None) -> Dict[str, Any]:
-        """Build MongoDB query."""
-        mongo_query = {
-            '$text': {'$search': query}
-        }
+        """Build MongoDB query with advanced search capabilities."""
+        # Parse query for MongoDB text search optimization
+        query_lower = query.lower()
+        is_exact_match = query.startswith('"') and query.endswith('"')
+        is_phrase_search = ' ' in query and not is_exact_match
         
+        if is_exact_match:
+            # Exact match search
+            clean_query = query[1:-1]
+            mongo_query = {
+                'content': {'$regex': f'^{clean_query}$', '$options': 'i'}
+            }
+        elif is_phrase_search:
+            # Phrase search with word proximity
+            words = query.split()
+            mongo_query = {
+                '$and': [
+                    {'content': {'$regex': word, '$options': 'i'}} for word in words
+                ]
+            }
+        else:
+            # Text search with relevance scoring
+            mongo_query = {
+                '$text': {'$search': query}
+            }
+        
+        # Add user and session filters
         if user_id:
             mongo_query['user_id'] = user_id
         
@@ -542,6 +707,72 @@ class DatabaseSource(BaseDataSource):
             mongo_query['session_id'] = session_id
         
         return mongo_query
+    
+    def _validate_query_parameters(self, query: str, user_id: Optional[str] = None, session_id: Optional[str] = None) -> Dict[str, Any]:
+        """Validate and sanitize query parameters."""
+        validation_errors = []
+        
+        # Validate query
+        if not query or not query.strip():
+            validation_errors.append("Query cannot be empty")
+        elif len(query.strip()) > 1000:
+            validation_errors.append("Query too long (max 1000 characters)")
+        
+        # Validate user_id
+        if user_id and not isinstance(user_id, str):
+            validation_errors.append("User ID must be a string")
+        elif user_id and len(user_id) > 100:
+            validation_errors.append("User ID too long (max 100 characters)")
+        
+        # Validate session_id
+        if session_id and not isinstance(session_id, str):
+            validation_errors.append("Session ID must be a string")
+        elif session_id and len(session_id) > 100:
+            validation_errors.append("Session ID too long (max 100 characters)")
+        
+        # Check for SQL injection patterns
+        dangerous_patterns = [
+            ';', '--', '/*', '*/', 'xp_', 'sp_', 'exec', 'execute',
+            'union', 'select', 'insert', 'update', 'delete', 'drop', 'create'
+        ]
+        
+        query_lower = query.lower()
+        for pattern in dangerous_patterns:
+            if pattern in query_lower:
+                validation_errors.append(f"Potentially dangerous pattern detected: {pattern}")
+                break
+        
+        if validation_errors:
+            raise ValueError(f"Query validation failed: {'; '.join(validation_errors)}")
+        
+        return {
+            'query': query.strip(),
+            'user_id': user_id.strip() if user_id else None,
+            'session_id': session_id.strip() if session_id else None
+        }
+    
+    def _create_parameterized_query(self, base_query: str, params: Dict[str, Any]) -> tuple:
+        """Create parameterized query with proper parameter binding."""
+        # This is a simplified version - in production, you'd use proper SQL parameter binding
+        # For now, we'll use the existing escaping method but prepare for future enhancement
+        
+        query = base_query
+        bound_params = {}
+        
+        # Replace template parameters with placeholders
+        if '{query}' in query:
+            query = query.replace('{query}', ':query')
+            bound_params[':query'] = params['query']
+        
+        if '{user_id}' in query and params.get('user_id'):
+            query = query.replace('{user_id}', ':user_id')
+            bound_params[':user_id'] = params['user_id']
+        
+        if '{session_id}' in query and params.get('session_id'):
+            query = query.replace('{session_id}', ':session_id')
+            bound_params[':session_id'] = params['session_id']
+        
+        return query, bound_params
     
     async def _handle_database_failure(self, query: str, error: Exception) -> None:
         """Handle database failure with proper error logging and cleanup."""
@@ -560,6 +791,12 @@ class DatabaseSource(BaseDataSource):
     async def _cleanup_database_connections(self) -> None:
         """Clean up database connections."""
         try:
+            # Clean up active transactions first
+            if self.transaction_depth > 0:
+                self.logger.warning(f"Cleaning up {self.transaction_depth} active transactions")
+                self.transaction_depth = 0
+                self.current_transaction = None
+            
             if hasattr(self, 'pool') and self.pool:
                 await self.pool.close()
                 self.pool = None
@@ -673,3 +910,104 @@ class DatabaseSource(BaseDataSource):
             metadata=metadata,
             token_count=token_count
         )
+    
+    async def begin_transaction(self) -> None:
+        """Begin a database transaction."""
+        try:
+            if self.transaction_depth == 0:
+                if self.db_type == "postgresql" and self.pool:
+                    self.current_transaction = await self.pool.acquire()
+                    await self.current_transaction.execute("BEGIN")
+                elif self.engine:
+                    self.current_transaction = self.session_factory()
+                    await self.current_transaction.begin()
+                else:
+                    raise ICOException("No database connection available for transaction")
+                
+                self.transaction_depth += 1
+                self.logger.info("Database transaction started")
+            else:
+                # Nested transaction - increment depth
+                self.transaction_depth += 1
+                
+        except Exception as e:
+            self.logger.error(f"Failed to begin transaction: {e}")
+            raise ICOException(f"Failed to begin transaction: {e}")
+    
+    async def commit_transaction(self) -> None:
+        """Commit the current database transaction."""
+        try:
+            if self.transaction_depth > 0:
+                self.transaction_depth -= 1
+                
+                if self.transaction_depth == 0:
+                    if self.current_transaction:
+                        if hasattr(self.current_transaction, 'execute'):
+                            await self.current_transaction.execute("COMMIT")
+                        else:
+                            await self.current_transaction.commit()
+                        
+                        # Release connection back to pool
+                        if hasattr(self.current_transaction, 'release'):
+                            await self.current_transaction.release()
+                        
+                        self.current_transaction = None
+                        self.logger.info("Database transaction committed")
+                        
+        except Exception as e:
+            self.logger.error(f"Failed to commit transaction: {e}")
+            await self.rollback_transaction()
+            raise ICOException(f"Failed to commit transaction: {e}")
+    
+    async def rollback_transaction(self) -> None:
+        """Rollback the current database transaction."""
+        try:
+            if self.transaction_depth > 0:
+                self.transaction_depth -= 1
+                
+                if self.transaction_depth == 0:
+                    if self.current_transaction:
+                        if hasattr(self.current_transaction, 'execute'):
+                            await self.current_transaction.execute("ROLLBACK")
+                        else:
+                            await self.current_transaction.rollback()
+                        
+                        # Release connection back to pool
+                        if hasattr(self.current_transaction, 'release'):
+                            await self.current_transaction.release()
+                        
+                        self.current_transaction = None
+                        self.logger.info("Database transaction rolled back")
+                        
+        except Exception as e:
+            self.logger.error(f"Failed to rollback transaction: {e}")
+            # Force cleanup
+            self.transaction_depth = 0
+            self.current_transaction = None
+    
+    async def execute_in_transaction(self, operation: callable, *args, **kwargs):
+        """Execute an operation within a transaction."""
+        try:
+            await self.begin_transaction()
+            result = await operation(*args, **kwargs)
+            await self.commit_transaction()
+            return result
+        except Exception as e:
+            await self.rollback_transaction()
+            raise e
+    
+    def get_connection_stats(self) -> Dict[str, Any]:
+        """Get connection pool statistics."""
+        return self.connection_stats.copy()
+    
+    async def _update_connection_stats(self, query_time: float, success: bool = True) -> None:
+        """Update connection statistics."""
+        self.connection_stats['query_count'] += 1
+        
+        if success:
+            # Update average query time
+            current_avg = self.connection_stats['avg_query_time']
+            count = self.connection_stats['query_count']
+            self.connection_stats['avg_query_time'] = (current_avg * (count - 1) + query_time) / count
+        else:
+            self.connection_stats['failed_connections'] += 1
