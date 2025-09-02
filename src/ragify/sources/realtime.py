@@ -103,6 +103,9 @@ class RealtimeSource(BaseDataSource):
         self.subscribers: set[Callable] = set() # For publish_update
         self.data_buffer: List[Dict[str, Any]] = [] # For buffering
         self.max_buffer_size: int = kwargs.get('max_buffer_size', 1000) # Default 1000
+        
+        # Buffer management methods
+        self._add_to_buffer = self._add_to_buffer_safe
         self.filter_config: Dict[str, Any] = {} # For filtering
         self.transform_config: Dict[str, Any] = {} # For transformations
         self.rate_limit: int = kwargs.get('rate_limit', 10) # Default 10 per second
@@ -539,6 +542,30 @@ class RealtimeSource(BaseDataSource):
         )
         
         return relevant_chunks
+    
+    def _add_to_buffer_safe(self, data: Dict[str, Any]) -> None:
+        """Safely add data to buffer with size enforcement."""
+        self.data_buffer.append(data)
+        
+        # Enforce buffer size limit
+        while len(self.data_buffer) > self.max_buffer_size:
+            self.data_buffer.pop(0)  # Remove oldest items
+    
+    async def _create_chunk(self, content: str, metadata: Dict[str, Any], token_count: int) -> ContextChunk:
+        """Create a ContextChunk object."""
+        from ..models import ContextChunk, ContextSource, SourceType
+        
+        return ContextChunk(
+            id=uuid4(),  # Generate unique ID for each chunk
+            content=content,
+            source=ContextSource(
+                name=self.name,
+                source_type=SourceType.REALTIME,
+                url=self.url
+            ),
+            metadata=metadata,
+            token_count=token_count
+        )
     
     async def _connect(self) -> None:
         """Connect to real-time data source."""
