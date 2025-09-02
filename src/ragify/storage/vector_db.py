@@ -1245,7 +1245,7 @@ class VectorDatabase:
         else:
             # For other database types, this should be overridden
             self.logger.warning(f"_create_connection not implemented for {self.db_type}")
-            return None
+        return None
     
     def _generate_search_cache_key(self, query_embedding: List[float], top_k: int, min_score: float, filters: Optional[Dict] = None) -> str:
         """Generate cache key for search results."""
