@@ -1,6 +1,6 @@
 # Ragify - Smart Context for LLM-Powered Applications
 
-**A framework for managing context from multiple data sources with conflict resolution, built specifically for LLM-powered applications.**
+**A Python framework for managing context from multiple data sources with conflict resolution, built specifically for LLM-powered applications.**
 
 ## 🎯 What is Ragify?
 
@@ -149,12 +149,13 @@ context = await orchestrator.get_context(
 
 ## 🚀 Status
 
-**Current Status**: ✅
+**Current Status**: 🚧 **Development in Progress**
 - Core framework implemented
-- Test suite included
+- Test suite included (522 tests passing)
 - Examples provided
-- **🔐 Security & Privacy**: ✅ **Implemented and tested** (GDPR, HIPAA, SOX features)
-- Not on PyPI yet
+- **🔐 Security & Privacy**: ✅ **Implemented and tested**
+- **⚠️ Not yet available on PyPI**
+- **⚠️ Requires manual setup and path configuration**
 
 ## 🔐 **Security & Privacy Features - IMPLEMENTED**
 
@@ -190,6 +191,14 @@ context = await orchestrator.get_context(
 - **[Security & Privacy](examples/security_encryption_and_access_control.py)** - Security, encryption & access control
 - **[Examples Index](examples/INDEX.md)** - Quick navigation guide
 - **[Examples README](examples/README_EXAMPLES.md)** - Comprehensive developer guide
+
+## ⚠️ **Important Notes**
+
+- **Not on PyPI**: This is a development version, not a published package
+- **Setup Required**: Manual installation and path configuration needed
+- **Development Status**: Framework is functional but requires technical setup
+- **Examples**: 30+ working examples demonstrate capabilities
+- **Testing**: Comprehensive test suite with 522 passing tests
 
 ## 🤝 Contribute
 
