@@ -9,10 +9,10 @@ including WebSocket, MQTT, Redis, and Kafka connections.
 import asyncio
 import json
 from datetime import datetime
-from src.ragify.sources.realtime import RealtimeSource
-from src.ragify.models import SourceType, PrivacyLevel
-from src.ragify.core import ContextOrchestrator
-from src.ragify.exceptions import ICOException
+from ragify.sources.realtime import RealtimeSource
+from ragify.models import SourceType, PrivacyLevel
+from ragify.core import ContextOrchestrator
+from ragify.exceptions import ICOException
 
 async def demo_websocket_sync():
     """Demonstrate WebSocket real-time synchronization."""

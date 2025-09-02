@@ -14,9 +14,9 @@ from pathlib import Path
 from datetime import datetime
 from typing import List, Dict, Any
 
-from src.ragify.storage.vector_db import VectorDatabase
-from src.ragify.models import ContextChunk, ContextSource, SourceType, RelevanceScore
-from src.ragify.exceptions import VectorDBError
+from ragify.storage.vector_db import VectorDatabase
+from ragify.models import ContextChunk, ContextSource, SourceType, RelevanceScore
+from ragify.exceptions import VectorDBError
 
 
 def generate_sample_embeddings(texts: List[str], dimension: int = 384) -> List[List[float]]:

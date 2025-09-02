@@ -21,13 +21,13 @@ from typing import List, Dict, Any
 import random
 
 from ragify import ContextOrchestrator
-from src.ragify.models import (
+from ragify.models import (
     Context, ContextChunk, PrivacyLevel, ContextSource, 
     SourceType, RelevanceScore, ConflictType, ConflictInfo,
     ConflictResolutionStrategy, FusionMetadata
 )
-from src.ragify.engines.fusion import IntelligentContextFusionEngine
-from src.ragify.models import OrchestratorConfig
+from ragify.engines.fusion import IntelligentContextFusionEngine
+from ragify.models import OrchestratorConfig
 
 
 class ConflictResolutionDemo:

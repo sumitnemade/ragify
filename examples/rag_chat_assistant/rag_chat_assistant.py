@@ -22,9 +22,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
 
 # Import RAGify components
 from ragify import ContextOrchestrator
-from src.ragify.models import PrivacyLevel, SourceType
-from src.ragify.sources.document import DocumentSource
-from src.ragify.storage.vector_db import VectorDatabase
+from ragify.models import PrivacyLevel, SourceType
+from ragify.sources.document import DocumentSource
+from ragify.storage.vector_db import VectorDatabase
 
 # Import OpenAI
 import openai

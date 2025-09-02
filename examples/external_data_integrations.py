@@ -10,10 +10,10 @@ import asyncio
 import time
 from datetime import datetime
 from uuid import uuid4
-from src.ragify.sources.api import APISource
-from src.ragify.sources.database import DatabaseSource
-from src.ragify.models import ContextChunk, ContextSource, SourceType, PrivacyLevel
-from src.ragify.exceptions import ICOException
+from ragify.sources.api import APISource
+from ragify.sources.database import DatabaseSource
+from ragify.models import ContextChunk, ContextSource, SourceType, PrivacyLevel
+from ragify.exceptions import ICOException
 
 async def demo_api_integrations():
     """Demonstrate real API integrations."""
@@ -386,8 +386,8 @@ async def demo_integration_with_orchestrator():
     print(f"\n🔗 Integration with Context Orchestrator Demo")
     print("=" * 50)
     
-    from src.ragify.core import ContextOrchestrator
-    from src.ragify.models import ContextRequest
+    from ragify.core import ContextOrchestrator
+    from ragify.models import ContextRequest
     
     # Create orchestrator with API and database sources
     orchestrator = ContextOrchestrator(

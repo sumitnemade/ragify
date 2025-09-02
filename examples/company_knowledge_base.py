@@ -17,10 +17,10 @@ from datetime import datetime
 from typing import List, Dict, Any
 
 from ragify import ContextOrchestrator
-from src.ragify.models import Context, ContextChunk, PrivacyLevel, ContextSource
-from src.ragify.sources.document import DocumentSource
-from src.ragify.storage.security import SecurityManager
-from src.ragify.storage.privacy import PrivacyManager
+from ragify.models import Context, ContextChunk, PrivacyLevel, ContextSource
+from ragify.sources.document import DocumentSource
+from ragify.storage.security import SecurityManager
+from ragify.storage.privacy import PrivacyManager
 
 
 class CompanyKnowledgeBase:

@@ -10,8 +10,8 @@ import asyncio
 import time
 from datetime import datetime
 from uuid import uuid4
-from src.ragify.storage.cache import CacheManager
-from src.ragify.models import Context, ContextChunk, ContextSource, SourceType, PrivacyLevel
+from ragify.storage.cache import CacheManager
+from ragify.models import Context, ContextChunk, ContextSource, SourceType, PrivacyLevel
 
 async def demo_memory_cache():
     """Demonstrate in-memory cache functionality."""

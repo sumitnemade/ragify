@@ -18,14 +18,14 @@ from datetime import datetime
 from typing import List, Dict, Any
 
 from ragify import ContextOrchestrator
-from src.ragify.models import Context, ContextChunk, PrivacyLevel, ContextSource, SourceType, RelevanceScore
-from src.ragify.sources.document import DocumentSource
-from src.ragify.sources.api import APISource
-from src.ragify.sources.database import DatabaseSource
-from src.ragify.engines.fusion import IntelligentContextFusionEngine
-from src.ragify.storage.security import SecurityManager
-from src.ragify.storage.privacy import PrivacyManager
-from src.ragify.storage.compliance import ComplianceManager
+from ragify.models import Context, ContextChunk, PrivacyLevel, ContextSource, SourceType, RelevanceScore
+from ragify.sources.document import DocumentSource
+from ragify.sources.api import APISource
+from ragify.sources.database import DatabaseSource
+from ragify.engines.fusion import IntelligentContextFusionEngine
+from ragify.storage.security import SecurityManager
+from ragify.storage.privacy import PrivacyManager
+from ragify.storage.compliance import ComplianceManager
 
 
 class RealWorldResearchAssistant:

@@ -12,12 +12,12 @@ import os
 from pathlib import Path
 from datetime import datetime, timedelta
 from uuid import uuid4
-from src.ragify.engines.updates import ContextUpdatesEngine
-from src.ragify.models import (
+from ragify.engines.updates import ContextUpdatesEngine
+from ragify.models import (
     Context, ContextChunk, ContextSource, SourceType, 
     PrivacyLevel, RelevanceScore, UpdateType
 )
-from src.ragify.exceptions import ICOException
+from ragify.exceptions import ICOException
 
 async def demo_incremental_updates():
     """Demonstrate incremental update capabilities."""
@@ -30,7 +30,7 @@ async def demo_incremental_updates():
         storage_path = os.path.join(temp_dir, "ragify_storage")
         
         # Initialize updates engine
-        from src.ragify.models import OrchestratorConfig
+        from ragify.models import OrchestratorConfig
         config = OrchestratorConfig(
             vector_db_url="memory://",
             cache_url="memory://",
@@ -149,7 +149,7 @@ async def demo_change_detection():
         storage_path = os.path.join(temp_dir, "ragify_storage")
         
         # Initialize updates engine with proper config
-        from src.ragify.models import OrchestratorConfig
+        from ragify.models import OrchestratorConfig
         config = OrchestratorConfig(
             vector_db_url="memory://",
             cache_url="memory://",
@@ -265,7 +265,7 @@ async def demo_synchronization():
         target_path = os.path.join(temp_dir, "target_storage")
         
         # Initialize source and target engines with proper configs
-        from src.ragify.models import OrchestratorConfig
+        from ragify.models import OrchestratorConfig
         source_config = OrchestratorConfig(
             vector_db_url="memory://",
             cache_url="memory://",
@@ -400,7 +400,7 @@ async def demo_update_scheduling():
         storage_path = os.path.join(temp_dir, "ragify_storage")
         
         # Initialize updates engine with proper config
-        from src.ragify.models import OrchestratorConfig
+        from ragify.models import OrchestratorConfig
         config = OrchestratorConfig(
             vector_db_url="memory://",
             cache_url="memory://",

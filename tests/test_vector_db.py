@@ -89,7 +89,7 @@ class TestVectorDatabase:
             # Search similar vectors
             results = await vector_db.search_similar(query_embedding, top_k=2)
             assert len(results) > 0
-            assert all(len(result) == 3 for result in results)  # (id, score, metadata)
+            assert all(hasattr(result, 'id') and hasattr(result, 'relevance_score') for result in results)  # ContextChunk objects
             
             # Test with filters
             filtered_results = await vector_db.search_similar(

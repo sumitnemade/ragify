@@ -9,9 +9,9 @@ including PDF, DOCX, DOC, and text file processing.
 import asyncio
 import os
 from pathlib import Path
-from src.ragify.sources.document import DocumentSource
-from src.ragify.models import SourceType, PrivacyLevel
-from src.ragify.core import ContextOrchestrator
+from ragify.sources.document import DocumentSource
+from ragify.models import SourceType, PrivacyLevel
+from ragify.core import ContextOrchestrator
 
 async def create_sample_documents():
     """Create sample documents for demonstration."""

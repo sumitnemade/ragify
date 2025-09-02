@@ -9,11 +9,11 @@ import asyncio
 import os
 from typing import List
 
-from src.ragify.core import ContextOrchestrator
-from src.ragify.models import PrivacyLevel, SourceType, ContextChunk, ContextSource
-from src.ragify.sources.document import DocumentSource
-from src.ragify.sources.api import APISource
-from src.ragify.sources.database import DatabaseSource
+from ragify.core import ContextOrchestrator
+from ragify.models import PrivacyLevel, SourceType, ContextChunk, ContextSource
+from ragify.sources.document import DocumentSource
+from ragify.sources.api import APISource
+from ragify.sources.database import DatabaseSource
 
 
 # Note: In a real application, you would use actual LLM APIs like OpenAI, Anthropic, etc.
@@ -29,7 +29,7 @@ async def generate_llm_response(prompt: str) -> str:
 # For demonstration purposes, we'll use a simple API response generator
 async def get_api_chunks(query: str, source_name: str, source_url: str) -> List[ContextChunk]:
     """Get chunks from the API source."""
-    from src.ragify.models import ContextChunk, ContextSource
+    from ragify.models import ContextChunk, ContextSource
     
     # Create a proper source object
     source = ContextSource(
@@ -52,7 +52,7 @@ async def get_api_chunks(query: str, source_name: str, source_url: str) -> List[
 # For demonstration purposes, we'll use a simple database response generator
 async def get_database_chunks(query: str, source_name: str, source_url: str) -> List[ContextChunk]:
     """Get chunks from the database source."""
-    from src.ragify.models import ContextChunk, ContextSource
+    from ragify.models import ContextChunk, ContextSource
     
     # Create a proper source object
     source = ContextSource(

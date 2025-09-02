@@ -22,12 +22,12 @@ import random
 import time
 
 from ragify import ContextOrchestrator
-from src.ragify.models import (
+from ragify.models import (
     Context, ContextChunk, PrivacyLevel, ContextSource, 
     SourceType, RelevanceScore
 )
-from src.ragify.storage.vector_db import VectorDatabase
-from src.ragify.models import OrchestratorConfig
+from ragify.storage.vector_db import VectorDatabase
+from ragify.models import OrchestratorConfig
 
 
 class MultiVectorDBDemo:
