@@ -488,3 +488,20 @@ class APISource(BaseDataSource):
         )
         
         return relevant_chunks
+    
+    async def _create_chunk(self, content: str, metadata: Dict[str, Any], token_count: int) -> ContextChunk:
+        """Create a ContextChunk object."""
+        from ..models import ContextChunk, ContextSource, SourceType
+        from uuid import uuid4
+        
+        return ContextChunk(
+            id=uuid4(),  # Generate unique ID for each chunk
+            content=content,
+            source=ContextSource(
+                name=self.name,
+                source_type=SourceType.API,
+                url=self.url
+            ),
+            metadata=metadata,
+            token_count=token_count
+        )

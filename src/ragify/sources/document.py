@@ -10,6 +10,7 @@ import io
 from datetime import datetime, timezone
 import re
 import hashlib
+from uuid import uuid4
 
 # Document processing imports
 import PyPDF2
@@ -148,18 +149,27 @@ class DocumentSource(BaseDataSource):
             
             # Process documents into chunks
             all_chunks = []
+            self.logger.info(f"Processing {len(documents)} documents into chunks")
             for doc_path, content in documents:
+                self.logger.debug(f"Chunking document: {doc_path} (content length: {len(content)})")
                 chunks = await self._chunk_content(content, doc_path)
+                self.logger.debug(f"Created {len(chunks)} chunks from {doc_path}")
                 all_chunks.extend(chunks)
             
+            self.logger.info(f"Total chunks created: {len(all_chunks)}")
+            
             # Filter chunks based on query relevance
+            self.logger.info(f"Filtering {len(all_chunks)} chunks by query relevance (min_relevance: {min_relevance})")
             relevant_chunks = await self._filter_chunks_by_query(
                 all_chunks, query, min_relevance
             )
             
+            self.logger.info(f"After relevance filtering: {len(relevant_chunks)} chunks")
+            
             # Apply max_chunks limit
             if max_chunks:
                 relevant_chunks = relevant_chunks[:max_chunks]
+                self.logger.info(f"After max_chunks limit: {len(relevant_chunks)} chunks")
             
             # Update statistics
             await self._update_stats(len(relevant_chunks))
@@ -280,7 +290,7 @@ class DocumentSource(BaseDataSource):
                 # Create tasks for batch
                 tasks = [
                     asyncio.wait_for(
-                        self._load_single_document(f), 
+                        self._load_single_document_content(f), 
                         timeout=15.0
                     )
                     for f in batch
@@ -293,16 +303,14 @@ class DocumentSource(BaseDataSource):
                     # Collect successful results
                     for i, result in enumerate(batch_results):
                         file_path = batch[i]
-                        if isinstance(result, list) and len(result) > 0:
-                            # Convert chunks back to content for backward compatibility
-                            content = "\n\n".join([chunk['content'] for chunk in result])
-                            documents.append((str(file_path), content))
-                            self.logger.debug(f"Successfully loaded: {file_path.name}")
+                        if isinstance(result, str) and result.strip():
+                            documents.append((str(file_path), result))
+                            self.logger.debug(f"Successfully loaded: {file_path.name} (content length: {len(result)})")
                         else:
                             if isinstance(result, Exception):
                                 self.logger.warning(f"Failed to load {file_path.name}: {result}")
                             else:
-                                self.logger.warning(f"No content extracted from {file_path.name}")
+                                self.logger.warning(f"No content extracted from {file_path.name} (result type: {type(result)}, content: {str(result)[:100] if result else 'None'})")
                                 
                 except Exception as e:
                     self.logger.error(f"Batch {batch_num_display} processing failed: {e}")
@@ -316,6 +324,127 @@ class DocumentSource(BaseDataSource):
         
         self.logger.info(f"Parallel document loading completed: {len(documents)} documents loaded")
         return documents
+    
+    async def _load_single_document_content(self, file_path: Path) -> str:
+        """
+        Load raw content from a single document.
+        
+        Args:
+            file_path: Path to the document file
+            
+        Returns:
+            Raw document content as string
+        """
+        try:
+            suffix = file_path.suffix.lower()
+            processor = self.supported_formats.get(suffix)
+            
+            if processor:
+                # Get raw content from processor
+                return await self._extract_raw_content(file_path, suffix)
+            else:
+                self.logger.warning(f"Unsupported file format: {suffix}")
+                return ""
+                
+        except Exception as e:
+            self.logger.error(f"Failed to load document {file_path}: {e}")
+            return ""
+    
+    async def _extract_raw_content(self, file_path: Path, file_type: str) -> str:
+        """
+        Extract raw content from a document based on file type.
+        
+        Args:
+            file_path: Path to the document file
+            file_type: File type (extension)
+            
+        Returns:
+            Raw document content as string
+        """
+        try:
+            self.logger.debug(f"Extracting content from {file_path.name} (type: {file_type})")
+            
+            if file_type == '.txt':
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    self.logger.debug(f"Text file {file_path.name}: {len(content)} characters")
+                    return content
+            elif file_type == '.md':
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    self.logger.debug(f"Markdown file {file_path.name}: {len(content)} characters")
+                    return content
+            elif file_type == '.pdf':
+                content = await self._extract_pdf_content(file_path)
+                self.logger.debug(f"PDF file {file_path.name}: {len(content)} characters")
+                return content
+            elif file_type == '.docx':
+                content = await self._extract_docx_content(file_path)
+                self.logger.debug(f"DOCX file {file_path.name}: {len(content)} characters")
+                return content
+            elif file_type == '.doc':
+                content = await self._extract_doc_content(file_path)
+                self.logger.debug(f"DOC file {file_path.name}: {len(content)} characters")
+                return content
+            else:
+                self.logger.warning(f"Unsupported file type: {file_type}")
+                return ""
+        except Exception as e:
+            self.logger.error(f"Failed to extract content from {file_path}: {e}")
+            return ""
+    
+    async def _extract_pdf_content(self, file_path: Path) -> str:
+        """Extract raw text content from PDF file."""
+        try:
+            content = ""
+            
+            # Try pdfplumber first
+            try:
+                with pdfplumber.open(file_path) as pdf:
+                    for page_num, page in enumerate(pdf.pages, 1):
+                        page_text = page.extract_text()
+                        if page_text:
+                            content += f"\n--- Page {page_num} ---\n{page_text}\n"
+            except Exception as e:
+                self.logger.warning(f"pdfplumber failed for {file_path}: {e}")
+            
+            # Fallback to PyPDF2
+            if not content.strip():
+                with open(file_path, 'rb') as file:
+                    pdf_reader = PyPDF2.PdfReader(file)
+                    for page_num, page in enumerate(pdf_reader.pages, 1):
+                        try:
+                            page_text = page.extract_text()
+                            if page_text:
+                                content += f"\n--- Page {page_num} ---\n{page_text}\n"
+                        except Exception as e:
+                            self.logger.warning(f"Failed to extract text from page {page_num}: {e}")
+            
+            return content.strip()
+        except Exception as e:
+            self.logger.error(f"Failed to extract PDF content from {file_path}: {e}")
+            return ""
+    
+    async def _extract_docx_content(self, file_path: Path) -> str:
+        """Extract raw text content from DOCX file."""
+        try:
+            doc = Document(file_path)
+            content = ""
+            for paragraph in doc.paragraphs:
+                if paragraph.text.strip():
+                    content += paragraph.text + "\n"
+            return content.strip()
+        except Exception as e:
+            self.logger.error(f"Failed to extract DOCX content from {file_path}: {e}")
+            return ""
+    
+    async def _extract_doc_content(self, file_path: Path) -> str:
+        """Extract raw text content from DOC file."""
+        try:
+            return docx2txt.process(str(file_path))
+        except Exception as e:
+            self.logger.error(f"Failed to extract DOC content from {file_path}: {e}")
+            return ""
     
     async def _load_single_document(self, file_path: Path) -> List[Dict[str, Any]]:
         """
@@ -1239,41 +1368,71 @@ class DocumentSource(BaseDataSource):
             Filtered list of chunks
         """
         if min_relevance <= 0.0:
+            self.logger.debug(f"No relevance filtering applied, returning all {len(chunks)} chunks")
             return chunks
         
         # Simple keyword-based filtering
         query_words = set(query.lower().split())
         relevant_chunks = []
         
-        for chunk in chunks:
+        self.logger.debug(f"Filtering chunks with query: '{query}' (words: {query_words})")
+        self.logger.debug(f"Min relevance threshold: {min_relevance}")
+        
+        # Track all chunks with their relevance scores for fallback
+        scored_chunks = []
+        
+        for i, chunk in enumerate(chunks):
             chunk_words = set(chunk.content.lower().split())
             overlap = len(query_words.intersection(chunk_words))
             
             if query_words:
                 relevance = overlap / len(query_words)
+                
+                # Log some sample chunks for debugging
+                if i < 3:  # Log first 3 chunks
+                    self.logger.debug(f"Chunk {i}: overlap={overlap}/{len(query_words)}, relevance={relevance:.3f}")
+                    self.logger.debug(f"  Content preview: {chunk.content[:100]}...")
+                
+                # Store chunk with relevance score
+                chunk.relevance_score = type('obj', (object,), {
+                    'score': relevance,
+                    'confidence_lower': max(0, relevance - 0.1),
+                    'confidence_upper': min(1, relevance + 0.1),
+                    'confidence_level': 0.95,
+                    'factors': {'keyword_overlap': relevance}
+                })()
+                
+                scored_chunks.append((chunk, relevance))
+                
                 # For very high thresholds like 1.0, we need exact match
                 if min_relevance >= 1.0:
                     # Require exact 100% match
                     if relevance >= 1.0:
-                        chunk.relevance_score = type('obj', (object,), {
-                            'score': relevance,
-                            'confidence_lower': max(0, relevance - 0.1),
-                            'confidence_upper': min(1, relevance + 0.1),
-                            'confidence_level': 0.95,
-                            'factors': {'keyword_overlap': relevance}
-                        })()
                         relevant_chunks.append(chunk)
                 else:
                     # Normal threshold filtering
                     if relevance >= min_relevance:
-                        chunk.relevance_score = type('obj', (object,), {
-                            'score': relevance,
-                            'confidence_lower': max(0, relevance - 0.1),
-                            'confidence_upper': min(1, relevance + 0.1),
-                            'confidence_level': 0.95,
-                            'factors': {'keyword_overlap': relevance}
-                        })()
                         relevant_chunks.append(chunk)
+        
+        self.logger.debug(f"Relevance filtering: {len(relevant_chunks)}/{len(chunks)} chunks passed threshold {min_relevance}")
+        
+        # If no chunks passed the threshold, return top chunks by relevance as fallback
+        # But only for non-exact match scenarios (min_relevance < 1.0)
+        if not relevant_chunks and scored_chunks and min_relevance < 1.0:
+            self.logger.info(f"No chunks passed relevance threshold {min_relevance}, returning top chunks as fallback")
+            # Sort by relevance and take top chunks
+            scored_chunks.sort(key=lambda x: x[1], reverse=True)
+            fallback_chunks = [chunk for chunk, _ in scored_chunks[:10]]  # Top 10 chunks
+            
+            # Update relevance scores for fallback chunks
+            for chunk in fallback_chunks:
+                chunk.relevance_score.score = max(0.1, chunk.relevance_score.score)  # Ensure minimum score
+            
+            self.logger.info(f"Returning {len(fallback_chunks)} fallback chunks")
+            return fallback_chunks
+        elif not relevant_chunks and min_relevance >= 1.0:
+            self.logger.info(f"No chunks passed exact match threshold {min_relevance}, returning empty result")
+            return []
         
         # Sort by relevance
         relevant_chunks.sort(
@@ -1298,6 +1457,7 @@ class DocumentSource(BaseDataSource):
         """Create a ContextChunk object."""
         from ..models import ContextChunk, ContextSource, SourceType
         return ContextChunk(
+            id=uuid4(),  # Generate unique ID for each chunk
             content=content,
             source=ContextSource(
                 name="document_source",

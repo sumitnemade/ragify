@@ -4,7 +4,11 @@
     <option name="autoReloadType" value="NONE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="90fe85d2-ef2a-48b6-aa64-1563ad4f3ee2" name="Changes" comment="" />
+    <list default="true" id="90fe85d2-ef2a-48b6-aa64-1563ad4f3ee2" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/src/ragify/sources/api.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ragify/sources/api.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ragify/sources/database.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ragify/sources/database.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ragify/sources/document.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ragify/sources/document.py" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
