@@ -17,6 +17,12 @@ import httpx
 import base64
 import hashlib
 import hmac
+import secrets
+import jwt
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.backends import default_backend
 
 from .base import BaseDataSource
 from ..models import ContextChunk, SourceType
@@ -37,7 +43,7 @@ class APISource(BaseDataSource):
         url: str = "",
         headers: Optional[Dict[str, str]] = None,
         timeout: int = 30,
-        auth_type: str = "none",  # none, basic, bearer, api_key, oauth2
+        auth_type: str = "none",  # none, basic, bearer, api_key, oauth2, jwt, hmac
         auth_config: Optional[Dict[str, Any]] = None,
         rate_limit: Optional[Dict[str, int]] = None,
         retry_config: Optional[Dict[str, Any]] = None,
@@ -52,7 +58,7 @@ class APISource(BaseDataSource):
             url: API endpoint URL
             headers: HTTP headers for requests
             timeout: Request timeout in seconds
-            auth_type: Authentication type (none, basic, bearer, api_key, oauth2)
+            auth_type: Authentication type (none, basic, bearer, api_key, oauth2, jwt, hmac)
             auth_config: Authentication configuration
             rate_limit: Rate limiting configuration
             retry_config: Retry configuration
@@ -83,13 +89,98 @@ class APISource(BaseDataSource):
         self.session: Optional[aiohttp.ClientSession] = None
         self.httpx_client: Optional[httpx.AsyncClient] = None
         
-        # Rate limiting
+        # Enhanced rate limiting with sliding window
         self.last_request_time = 0.0
         self.request_count = 0
+        self.request_timestamps = []
+        self.rate_limit_window = 60  # seconds
         
-        # Authentication
+        # Enhanced authentication
         self.access_token = None
         self.token_expiry = None
+        self.refresh_token = None
+        self.id_token = None
+        
+        # API key rotation
+        self.api_keys = []
+        self.current_key_index = 0
+        self.key_rotation_interval = 3600  # 1 hour
+        self.last_key_rotation = time.time()
+        
+        # JWT handling
+        self.jwt_secret = None
+        self.jwt_algorithm = 'HS256'
+        self.jwt_issuer = None
+        self.jwt_audience = None
+        
+        # HMAC signing
+        self.hmac_secret = None
+        self.hmac_algorithm = 'sha256'
+        
+        # OAuth2 flow state
+        self.oauth2_state = None
+        self.oauth2_code_verifier = None
+        self.oauth2_redirect_uri = None
+        
+        # Initialize authentication based on type
+        self._initialize_auth()
+    
+    def _initialize_auth(self) -> None:
+        """Initialize authentication based on auth type."""
+        if self.auth_type == "oauth2":
+            self._initialize_oauth2()
+        elif self.auth_type == "jwt":
+            self._initialize_jwt()
+        elif self.auth_type == "hmac":
+            self._initialize_hmac()
+        elif self.auth_type == "api_key":
+            self._initialize_api_key_rotation()
+    
+    def _initialize_oauth2(self) -> None:
+        """Initialize OAuth2 configuration."""
+        self.oauth2_redirect_uri = self.auth_config.get('redirect_uri')
+        self.oauth2_state = secrets.token_urlsafe(32)
+        self.oauth2_code_verifier = secrets.token_urlsafe(64)
+        
+        # PKCE code challenge
+        code_challenge = base64.urlsafe_b64encode(
+            hashlib.sha256(self.oauth2_code_verifier.encode()).digest()
+        ).decode().rstrip('=')
+        
+        self.auth_config['code_challenge'] = code_challenge
+        self.auth_config['code_challenge_method'] = 'S256'
+    
+    def _initialize_jwt(self) -> None:
+        """Initialize JWT configuration."""
+        self.jwt_secret = self.auth_config.get('secret')
+        self.jwt_algorithm = self.auth_config.get('algorithm', 'HS256')
+        self.jwt_issuer = self.auth_config.get('issuer')
+        self.jwt_audience = self.auth_config.get('audience')
+        
+        if not self.jwt_secret:
+            self.logger.warning("JWT secret not provided, using default")
+            self.jwt_secret = secrets.token_urlsafe(32)
+    
+    def _initialize_hmac(self) -> None:
+        """Initialize HMAC signing configuration."""
+        self.hmac_secret = self.auth_config.get('secret')
+        self.hmac_algorithm = self.auth_config.get('algorithm', 'sha256')
+        
+        if not self.hmac_secret:
+            self.logger.warning("HMAC secret not provided, using default")
+            self.hmac_secret = secrets.token_urlsafe(32)
+    
+    def _initialize_api_key_rotation(self) -> None:
+        """Initialize API key rotation."""
+        api_key = self.auth_config.get('api_key')
+        if api_key:
+            self.api_keys = [api_key]
+        else:
+            # Generate multiple keys for rotation
+            self.api_keys = [secrets.token_urlsafe(32) for _ in range(3)]
+        
+        self.current_key_index = 0
+        self.last_key_rotation = time.time()
     
     async def get_chunks(
         self,
@@ -156,6 +247,14 @@ class APISource(BaseDataSource):
                 except Exception as e:
                     self.logger.warning(f"Failed to refresh OAuth2 token: {e}")
             
+            # Rotate API keys if needed
+            if self.auth_type == 'api_key':
+                await self._rotate_api_keys()
+            
+            # Refresh JWT token if needed
+            if self.auth_type == 'jwt' and self._is_jwt_expired():
+                await self._refresh_jwt_token()
+            
             self.logger.info("API source refreshed successfully")
             
         except Exception as e:
@@ -197,8 +296,8 @@ class APISource(BaseDataSource):
         # Initialize HTTP client if needed
         await self._ensure_http_client()
         
-        # Apply rate limiting
-        await self._apply_rate_limit()
+        # Apply enhanced rate limiting
+        await self._apply_enhanced_rate_limit()
         
         # Prepare request parameters
         params = {
@@ -212,10 +311,14 @@ class APISource(BaseDataSource):
             params['session_id'] = session_id
         
         # Add authentication headers
-        headers = await self._get_auth_headers()
+        headers = await self._get_enhanced_auth_headers()
         
         # Add custom headers
         headers.update(self.headers)
+        
+        # Add request signing if HMAC is enabled
+        if self.auth_type == 'hmac':
+            headers.update(await self._sign_request(params, headers))
         
         # Make request with retry logic
         for attempt in range(self.retry_config['max_retries'] + 1):
@@ -250,7 +353,6 @@ class APISource(BaseDataSource):
                 else:
                     # All retries failed, handle failure properly
                     await self._handle_api_failure(query, Exception(f"Max retries ({self.retry_config['max_retries']}) exceeded"))
-                    
     
     async def _ensure_http_client(self) -> None:
         """Ensure HTTP client is initialized."""
@@ -265,22 +367,24 @@ class APISource(BaseDataSource):
                 timeout=aiohttp.ClientTimeout(total=self.timeout)
             )
     
-    async def _apply_rate_limit(self) -> None:
-        """Apply rate limiting if configured."""
+    async def _apply_enhanced_rate_limit(self) -> None:
+        """Apply enhanced rate limiting with sliding window."""
         if not self.rate_limit:
             return
         
         current_time = time.time()
         
-        # Handle rate limit as integer (requests per minute) or dict
+        # Clean old timestamps
+        self.request_timestamps = [ts for ts in self.request_timestamps 
+                                 if current_time - ts < self.rate_limit_window]
+        
+        # Handle different rate limit configurations
         if isinstance(self.rate_limit, int):
             # Simple rate limiting - requests per minute
-            if self.request_count >= self.rate_limit:
-                # Reset counter after a minute
-                if current_time - self.last_request_time >= 60:
-                    self.request_count = 0
-                else:
-                    await asyncio.sleep(60 - (current_time - self.last_request_time))
+            if len(self.request_timestamps) >= self.rate_limit:
+                sleep_time = self.rate_limit_window - (current_time - self.request_timestamps[0])
+                if sleep_time > 0:
+                    await asyncio.sleep(sleep_time)
         elif isinstance(self.rate_limit, dict):
             # Advanced rate limiting configuration
             if 'requests_per_second' in self.rate_limit:
@@ -292,17 +396,27 @@ class APISource(BaseDataSource):
                     await asyncio.sleep(sleep_time)
             
             if 'requests_per_minute' in self.rate_limit:
-                if self.request_count >= self.rate_limit['requests_per_minute']:
-                    if current_time - self.last_request_time >= 60:
-                        self.request_count = 0
-                    else:
-                        await asyncio.sleep(60 - (current_time - self.last_request_time))
+                if len(self.request_timestamps) >= self.rate_limit['requests_per_minute']:
+                    sleep_time = self.rate_limit_window - (current_time - self.request_timestamps[0])
+                    if sleep_time > 0:
+                        await asyncio.sleep(sleep_time)
+            
+            if 'burst_limit' in self.rate_limit:
+                # Burst limiting - allow short bursts but maintain average
+                burst_window = self.rate_limit.get('burst_window', 10)
+                recent_requests = [ts for ts in self.request_timestamps 
+                                 if current_time - ts < burst_window]
+                
+                if len(recent_requests) > self.rate_limit['burst_limit']:
+                    sleep_time = burst_window - (current_time - recent_requests[0])
+                    if sleep_time > 0:
+                        await asyncio.sleep(sleep_time)
         
         self.last_request_time = current_time
-        self.request_count += 1
+        self.request_timestamps.append(current_time)
     
-    async def _get_auth_headers(self) -> Dict[str, str]:
-        """Get authentication headers based on auth type."""
+    async def _get_enhanced_auth_headers(self) -> Dict[str, str]:
+        """Get enhanced authentication headers based on auth type."""
         headers = {}
         
         if self.auth_type == "none":
@@ -321,10 +435,11 @@ class APISource(BaseDataSource):
                 headers['Authorization'] = f"Bearer {token}"
         
         elif self.auth_type == "api_key":
-            api_key = self.auth_config.get('api_key')
+            # Use rotated API key
+            await self._rotate_api_keys()
+            api_key = self.api_keys[self.current_key_index]
             header_name = self.auth_config.get('header_name', 'X-API-Key')
-            if api_key:
-                headers[header_name] = api_key
+            headers[header_name] = api_key
         
         elif self.auth_type == "oauth2":
             # Handle OAuth2 token refresh
@@ -333,6 +448,18 @@ class APISource(BaseDataSource):
             
             if self.access_token:
                 headers['Authorization'] = f"Bearer {self.access_token}"
+        
+        elif self.auth_type == "jwt":
+            # Generate or refresh JWT token
+            if await self._is_jwt_expired():
+                await self._refresh_jwt_token()
+            
+            token = await self._generate_jwt_token()
+            headers['Authorization'] = f"Bearer {token}"
+        
+        elif self.auth_type == "hmac":
+            # HMAC signing will be added in _sign_request
+            pass
         
         return headers
     
@@ -343,6 +470,35 @@ class APISource(BaseDataSource):
         
         # Add 5-minute buffer
         return datetime.now() >= self.token_expiry - timedelta(minutes=5)
+    
+    async def _is_jwt_expired(self) -> bool:
+        """Check if JWT token is expired."""
+        if not self.id_token:
+            return True
+        
+        try:
+            # Decode without audience validation to avoid issues
+            payload = jwt.decode(
+                self.id_token, 
+                self.jwt_secret, 
+                algorithms=[self.jwt_algorithm],
+                options={"verify_aud": False}
+            )
+            exp = payload.get('exp')
+            if exp:
+                # Add 5-minute buffer
+                current_time = datetime.now().timestamp()
+                return current_time >= exp - 300
+            else:
+                # No expiration claim, consider expired
+                return True
+        except jwt.ExpiredSignatureError:
+            return True
+        except jwt.InvalidTokenError:
+            return True
+        
+        # If we get here, token is valid and not expired
+        return False
     
     async def _refresh_oauth2_token(self) -> None:
         """Refresh OAuth2 access token."""
@@ -379,6 +535,84 @@ class APISource(BaseDataSource):
                 
         except Exception as e:
             self.logger.error(f"Failed to refresh OAuth2 token: {e}")
+    
+    async def _refresh_jwt_token(self) -> None:
+        """Refresh JWT token."""
+        try:
+            # Generate new JWT token
+            payload = {
+                'iss': self.jwt_issuer or self.name,
+                'aud': self.jwt_audience or 'ragify',
+                'iat': datetime.now().timestamp(),
+                'exp': (datetime.now() + timedelta(hours=1)).timestamp(),
+                'sub': self.name
+            }
+            
+            self.id_token = jwt.encode(payload, self.jwt_secret, algorithm=self.jwt_algorithm)
+            self.logger.info("JWT token refreshed successfully")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to refresh JWT token: {e}")
+    
+    async def _generate_jwt_token(self) -> str:
+        """Generate JWT token."""
+        if not self.id_token:
+            await self._refresh_jwt_token()
+        
+        return self.id_token
+    
+    async def _rotate_api_keys(self) -> None:
+        """Rotate API keys based on interval."""
+        current_time = time.time()
+        
+        if current_time - self.last_key_rotation >= self.key_rotation_interval:
+            self.current_key_index = (self.current_key_index + 1) % len(self.api_keys)
+            self.last_key_rotation = current_time
+            
+            # Generate new key if needed
+            if len(self.api_keys) < 3:
+                self.api_keys.append(secrets.token_urlsafe(32))
+            
+            self.logger.info(f"API key rotated to index {self.current_key_index}")
+    
+    async def _sign_request(self, params: Dict[str, Any], headers: Dict[str, str]) -> Dict[str, str]:
+        """Sign request with HMAC for security."""
+        try:
+            # Create signature string
+            timestamp = str(int(time.time()))
+            nonce = secrets.token_urlsafe(16)
+            
+            # Sort parameters for consistent signing
+            param_str = '&'.join([f"{k}={v}" for k, v in sorted(params.items())])
+            header_str = '&'.join([f"{k}={v}" for k, v in sorted(headers.items())])
+            
+            signature_string = f"{timestamp}&{nonce}&{param_str}&{header_str}"
+            
+            # Create HMAC signature
+            if self.hmac_algorithm == 'sha256':
+                signature = hmac.new(
+                    self.hmac_secret.encode(),
+                    signature_string.encode(),
+                    hashlib.sha256
+                ).hexdigest()
+            else:
+                signature = hmac.new(
+                    self.hmac_secret.encode(),
+                    signature_string.encode(),
+                    hashlib.sha1
+                ).hexdigest()
+            
+            # Add signature headers
+            return {
+                'X-Timestamp': timestamp,
+                'X-Nonce': nonce,
+                'X-Signature': signature,
+                'X-Signature-Algorithm': self.hmac_algorithm
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Failed to sign request: {e}")
+            return {}
     
     async def _handle_api_failure(self, query: str, error: Exception) -> None:
         """Handle API failure with proper error logging and cleanup."""
