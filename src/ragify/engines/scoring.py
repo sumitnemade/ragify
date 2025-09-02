@@ -12,11 +12,19 @@ from statsmodels.stats.proportion import proportion_confint
 from statsmodels.stats.weightstats import DescrStatsW
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.model_selection import cross_val_score
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+from sklearn.linear_model import LinearRegression, Ridge
+from sklearn.svm import SVR
+from sklearn.model_selection import cross_val_score, GridSearchCV, RandomizedSearchCV, train_test_split
+from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
+from sklearn.preprocessing import StandardScaler
+import joblib
+import os
 import structlog
 import time
 import hashlib
+import json
+from pathlib import Path
 
 from ..models import ContextChunk, RelevanceScore, OrchestratorConfig
 from ..exceptions import RelevanceScoringError
@@ -44,9 +52,41 @@ class ContextScoringEngine:
         self.embedding_model = None
         self._initialize_embedding_model()
         
-        # Initialize ML model for ensemble scoring
-        self.ml_model = RandomForestRegressor(n_estimators=100, random_state=42)
+        # Initialize ML models for ensemble scoring
+        self.ml_models = {
+            'random_forest': RandomForestRegressor(n_estimators=100, random_state=42),
+            'gradient_boosting': GradientBoostingRegressor(n_estimators=100, random_state=42),
+            'linear_regression': LinearRegression(),
+            'ridge_regression': Ridge(alpha=1.0),
+            'svr': SVR(kernel='rbf', C=1.0, gamma='scale')
+        }
+        self.current_model_name = 'random_forest'
+        self.ml_model = self.ml_models[self.current_model_name]
         self._is_trained = False
+        
+        # Model persistence configuration
+        self.model_persistence_config = {
+            'enabled': True,
+            'model_dir': 'models',
+            'auto_save': True,
+            'save_after_training': True,
+            'model_version': '1.0.0'
+        }
+        
+        # Feature preprocessing
+        self.feature_scaler = StandardScaler()
+        self._is_scaler_fitted = False
+        
+        # Training configuration
+        self.training_config = {
+            'validation_split': 0.2,
+            'cross_validation_folds': 5,
+            'hyperparameter_optimization': True,
+            'optimization_method': 'grid_search',  # 'grid_search' or 'random_search'
+            'max_iterations': 100,
+            'early_stopping': True,
+            'min_improvement': 0.001
+        }
         
         # Scoring weights for ensemble
         self.scoring_weights = {
@@ -90,6 +130,13 @@ class ContextScoringEngine:
         # Historical scoring data for statistical analysis
         self.scoring_history = []
         self.confidence_calibration_data = []
+        
+        # Training history and model performance tracking
+        self.training_history = []
+        self.model_performance = {}
+        
+        # Load existing model if available (will be done asynchronously when needed)
+        # Note: Model loading is deferred to avoid blocking initialization
 
         # Embedding model configuration
         self.embedding_batch_size = 100 # Batch size for embedding requests
@@ -1407,32 +1454,161 @@ class ContextScoringEngine:
         self,
         query_chunk_pairs: List[tuple],
         relevance_feedback: List[float],
-    ) -> None:
-        """Train the ML model on user feedback."""
+        validation_split: Optional[float] = None,
+        enable_cross_validation: bool = True,
+        enable_hyperparameter_optimization: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Comprehensive ML model training with validation, cross-validation, and hyperparameter optimization.
+        
+        Args:
+            query_chunk_pairs: List of (query, chunk) pairs for training
+            relevance_feedback: List of relevance scores for training
+            validation_split: Fraction of data to use for validation (default from config)
+            enable_cross_validation: Whether to perform cross-validation
+            enable_hyperparameter_optimization: Whether to optimize hyperparameters
+            
+        Returns:
+            Dictionary containing training results and performance metrics
+        """
         try:
-            # Extract features from query-chunk pairs
+            if len(query_chunk_pairs) < 10:
+                self.logger.warning("Insufficient training data. Need at least 10 samples.")
+                return {'success': False, 'error': 'Insufficient training data'}
+            
+            # Extract comprehensive features
             features = []
             for query, chunk in query_chunk_pairs:
                 feature_vector = await self._extract_features(query, chunk)
                 features.append(feature_vector)
             
-            # Train the model
-            self.ml_model.fit(features, relevance_feedback)
+            # Convert to numpy arrays
+            X = np.array(features)
+            y = np.array(relevance_feedback)
+            
+            # Split data for validation
+            val_split = validation_split or self.training_config['validation_split']
+            X_train, X_val, y_train, y_val = train_test_split(
+                X, y, test_size=val_split, random_state=42
+            )
+            
+            # Fit feature scaler
+            X_train_scaled = self.feature_scaler.fit_transform(X_train)
+            X_val_scaled = self.feature_scaler.transform(X_val)
+            self._is_scaler_fitted = True
+            
+            # Perform cross-validation if enabled
+            cv_scores = None
+            if enable_cross_validation:
+                cv_scores = await self._perform_cross_validation(X_train_scaled, y_train)
+            
+            # Hyperparameter optimization if enabled
+            best_model = None
+            if enable_hyperparameter_optimization:
+                best_model = await self._optimize_hyperparameters(X_train_scaled, y_train)
+            else:
+                best_model = self.ml_model
+            
+            # Train the best model
+            best_model.fit(X_train_scaled, y_train)
+            
+            # Evaluate on validation set
+            y_pred = best_model.predict(X_val_scaled)
+            validation_metrics = await self._calculate_validation_metrics(y_val, y_pred)
+            
+            # Update current model
+            self.ml_model = best_model
             self._is_trained = True
             
-            self.logger.info(f"Trained ML model on {len(query_chunk_pairs)} feedback samples")
+            # Store training results
+            training_result = {
+                'success': True,
+                'samples_trained': len(X_train),
+                'validation_samples': len(X_val),
+                'cross_validation_scores': cv_scores,
+                'validation_metrics': validation_metrics,
+                'model_name': self.current_model_name,
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            self.training_history.append(training_result)
+            
+            # Auto-save model if enabled
+            if self.model_persistence_config['auto_save']:
+                await self._save_model()
+            
+            self.logger.info(f"Successfully trained ML model on {len(X_train)} samples")
+            self.logger.info(f"Validation R²: {validation_metrics['r2_score']:.3f}")
+            
+            return training_result
+            
         except Exception as e:
             self.logger.error(f"Failed to train ML model: {e}")
+            return {'success': False, 'error': str(e)}
     
     async def _extract_features(self, query: str, chunk: ContextChunk) -> List[float]:
-        """Extract features for ML training."""
-        # Extract comprehensive features for ML training
-        # This provides a rich feature vector for machine learning models
-        return [
-            len(query),
-            len(chunk.content),
-            chunk.token_count or 0,
-        ]
+        """Extract comprehensive features for ML training."""
+        try:
+            # Basic text features
+            query_length = len(query)
+            content_length = len(chunk.content)
+            token_count = chunk.token_count or 0
+            
+            # Semantic features (if embeddings available)
+            semantic_score = 0.0
+            if hasattr(chunk, 'embedding') and chunk.embedding is not None:
+                try:
+                    query_embedding = await self._get_query_embedding(query)
+                    if query_embedding is not None:
+                        semantic_score = cosine_similarity(
+                            [query_embedding], [chunk.embedding]
+                        )[0][0]
+                except Exception:
+                    semantic_score = 0.0
+            
+            # Content quality features
+            content_quality = min(1.0, content_length / 1000.0)  # Normalize by expected length
+            query_content_ratio = query_length / max(content_length, 1)
+            
+            # Metadata features
+            source_authority = getattr(chunk.source, 'authority_score', 0.5) if chunk.source else 0.5
+            freshness_score = getattr(chunk, 'freshness_score', 0.5) if hasattr(chunk, 'freshness_score') else 0.5
+            
+            # Complexity features
+            avg_word_length = np.mean([len(word) for word in chunk.content.split()]) if chunk.content else 0
+            unique_words_ratio = len(set(chunk.content.lower().split())) / max(len(chunk.content.split()), 1)
+            
+            features = [
+                query_length,
+                content_length,
+                token_count,
+                semantic_score,
+                content_quality,
+                query_content_ratio,
+                source_authority,
+                freshness_score,
+                avg_word_length,
+                unique_words_ratio,
+                # Interaction features
+                query_length * content_length / 1000,
+                semantic_score * content_quality,
+                source_authority * freshness_score,
+                # Normalized features
+                query_length / 100.0,  # Normalize query length
+                content_length / 1000.0,  # Normalize content length
+                token_count / 100.0,  # Normalize token count
+                # Additional features to reach 20
+                np.log(max(query_length, 1)),  # Log of query length
+                np.log(max(content_length, 1)),  # Log of content length
+                np.log(max(token_count, 1)),  # Log of token count
+                np.sqrt(query_length),  # Square root of query length
+            ]
+            
+            return features
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to extract features: {e}")
+            return [0.5] * 20  # Return neutral features
     
     async def calibrate_confidence_intervals(self, validation_data: List[Dict[str, Any]]) -> None:
         """Calibrate confidence intervals using validation data."""
@@ -1597,3 +1773,401 @@ class ContextScoringEngine:
                 'confidence_level': self.confidence_config['default_confidence_level'],
                 'calibration_status': 'error',
             }
+    
+    # ==================== ML Ensemble Training Methods ====================
+    
+    async def _perform_cross_validation(self, X: np.ndarray, y: np.ndarray) -> Dict[str, float]:
+        """Perform cross-validation and return scores."""
+        try:
+            cv_folds = self.training_config['cross_validation_folds']
+            
+            # Perform cross-validation with multiple metrics
+            cv_r2 = cross_val_score(self.ml_model, X, y, cv=cv_folds, scoring='r2')
+            cv_mse = cross_val_score(self.ml_model, X, y, cv=cv_folds, scoring='neg_mean_squared_error')
+            cv_mae = cross_val_score(self.ml_model, X, y, cv=cv_folds, scoring='neg_mean_absolute_error')
+            
+            return {
+                'r2_scores': cv_r2.tolist(),
+                'mse_scores': (-cv_mse).tolist(),  # Convert back to positive
+                'mae_scores': (-cv_mae).tolist(),  # Convert back to positive
+                'r2_mean': np.mean(cv_r2),
+                'r2_std': np.std(cv_r2),
+                'mse_mean': np.mean(-cv_mse),
+                'mae_mean': np.mean(-cv_mae),
+                'cv_folds': cv_folds
+            }
+            
+        except Exception as e:
+            self.logger.warning(f"Cross-validation failed: {e}")
+            return {
+                'r2_scores': [],
+                'mse_scores': [],
+                'mae_scores': [],
+                'r2_mean': 0.0,
+                'r2_std': 0.0,
+                'mse_mean': 0.0,
+                'mae_mean': 0.0,
+                'cv_folds': 0
+            }
+    
+    async def _optimize_hyperparameters(self, X: np.ndarray, y: np.ndarray) -> Any:
+        """Optimize hyperparameters using grid search or random search."""
+        try:
+            method = self.training_config['optimization_method']
+            
+            if method == 'grid_search':
+                best_model = await self._grid_search_optimization(X, y)
+            elif method == 'random_search':
+                best_model = await self._random_search_optimization(X, y)
+            else:
+                self.logger.warning(f"Unknown optimization method: {method}")
+                return self.ml_model
+            
+            return best_model
+            
+        except Exception as e:
+            self.logger.warning(f"Hyperparameter optimization failed: {e}")
+            return self.ml_model
+    
+    async def _grid_search_optimization(self, X: np.ndarray, y: np.ndarray) -> Any:
+        """Perform grid search hyperparameter optimization."""
+        try:
+            # Define parameter grids for different model types
+            if isinstance(self.ml_model, RandomForestRegressor):
+                param_grid = {
+                    'n_estimators': [50, 100, 200],
+                    'max_depth': [None, 10, 20],
+                    'min_samples_split': [2, 5, 10],
+                    'min_samples_leaf': [1, 2, 4]
+                }
+            elif isinstance(self.ml_model, GradientBoostingRegressor):
+                param_grid = {
+                    'n_estimators': [50, 100, 200],
+                    'learning_rate': [0.01, 0.1, 0.2],
+                    'max_depth': [3, 5, 7],
+                    'subsample': [0.8, 0.9, 1.0]
+                }
+            elif isinstance(self.ml_model, Ridge):
+                param_grid = {
+                    'alpha': [0.1, 1.0, 10.0, 100.0]
+                }
+            elif isinstance(self.ml_model, SVR):
+                param_grid = {
+                    'C': [0.1, 1.0, 10.0],
+                    'gamma': ['scale', 'auto', 0.001, 0.01, 0.1],
+                    'kernel': ['rbf', 'linear']
+                }
+            else:
+                # For other models, use basic parameters
+                return self.ml_model
+            
+            # Perform grid search
+            grid_search = GridSearchCV(
+                self.ml_model,
+                param_grid,
+                cv=3,  # Use fewer folds for optimization
+                scoring='r2',
+                n_jobs=-1
+            )
+            
+            grid_search.fit(X, y)
+            
+            self.logger.info(f"Grid search completed. Best score: {grid_search.best_score_:.3f}")
+            self.logger.info(f"Best parameters: {grid_search.best_params_}")
+            
+            return grid_search.best_estimator_
+            
+        except Exception as e:
+            self.logger.warning(f"Grid search optimization failed: {e}")
+            return self.ml_model
+    
+    async def _random_search_optimization(self, X: np.ndarray, y: np.ndarray) -> Any:
+        """Perform random search hyperparameter optimization."""
+        try:
+            # Define parameter distributions for different model types
+            if isinstance(self.ml_model, RandomForestRegressor):
+                param_distributions = {
+                    'n_estimators': [50, 100, 150, 200, 250],
+                    'max_depth': [None, 5, 10, 15, 20, 25],
+                    'min_samples_split': [2, 3, 4, 5, 6, 7, 8, 9, 10],
+                    'min_samples_leaf': [1, 2, 3, 4, 5]
+                }
+            elif isinstance(self.ml_model, GradientBoostingRegressor):
+                param_distributions = {
+                    'n_estimators': [50, 75, 100, 125, 150, 175, 200],
+                    'learning_rate': [0.01, 0.05, 0.1, 0.15, 0.2, 0.25],
+                    'max_depth': [3, 4, 5, 6, 7, 8],
+                    'subsample': [0.7, 0.8, 0.9, 1.0]
+                }
+            else:
+                # For other models, use basic parameters
+                return self.ml_model
+            
+            # Perform random search
+            random_search = RandomizedSearchCV(
+                self.ml_model,
+                param_distributions,
+                n_iter=20,  # Number of parameter combinations to try
+                cv=3,
+                scoring='r2',
+                n_jobs=-1,
+                random_state=42
+            )
+            
+            random_search.fit(X, y)
+            
+            self.logger.info(f"Random search completed. Best score: {random_search.best_score_:.3f}")
+            self.logger.info(f"Best parameters: {random_search.best_params_}")
+            
+            return random_search.best_estimator_
+            
+        except Exception as e:
+            self.logger.warning(f"Random search optimization failed: {e}")
+            return self.ml_model
+    
+    async def _calculate_validation_metrics(self, y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, float]:
+        """Calculate comprehensive validation metrics."""
+        try:
+            # Basic regression metrics
+            mse = mean_squared_error(y_true, y_pred)
+            rmse = np.sqrt(mse)
+            mae = mean_absolute_error(y_true, y_pred)
+            r2 = r2_score(y_true, y_pred)
+            
+            # Additional metrics
+            mape = np.mean(np.abs((y_true - y_pred) / np.maximum(y_true, 1e-8))) * 100
+            explained_variance = np.var(y_pred) / np.var(y_true) if np.var(y_true) > 0 else 0
+            
+            return {
+                'mse': mse,
+                'rmse': rmse,
+                'mae': mae,
+                'r2_score': r2,
+                'mape': mape,
+                'explained_variance': explained_variance,
+                'mean_absolute_error': mae,
+                'root_mean_squared_error': rmse
+            }
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to calculate validation metrics: {e}")
+            return {
+                'mse': 0.0,
+                'rmse': 0.0,
+                'mae': 0.0,
+                'r2_score': 0.0,
+                'mape': 0.0,
+                'explained_variance': 0.0,
+                'mean_absolute_error': 0.0,
+                'root_mean_squared_error': 0.0
+            }
+    
+    async def _save_model(self) -> bool:
+        """Save the trained ML model and related data."""
+        try:
+            if not self.model_persistence_config['enabled']:
+                return False
+            
+            # Create model directory if it doesn't exist
+            model_dir = Path(self.model_persistence_config['model_dir'])
+            model_dir.mkdir(exist_ok=True)
+            
+            # Save the ML model
+            model_path = model_dir / f"ml_model_{self.current_model_name}.joblib"
+            joblib.dump(self.ml_model, model_path)
+            
+            # Save the feature scaler
+            scaler_path = model_dir / f"feature_scaler_{self.current_model_name}.joblib"
+            joblib.dump(self.feature_scaler, scaler_path)
+            
+            # Save model metadata
+            metadata = {
+                'model_name': self.current_model_name,
+                'model_version': self.model_persistence_config['model_version'],
+                'training_timestamp': datetime.now().isoformat(),
+                'is_trained': self._is_trained,
+                'is_scaler_fitted': self._is_scaler_fitted,
+                'training_history': self.training_history,
+                'model_performance': self.model_performance,
+                'feature_dimensions': self.ml_model.n_features_in_ if hasattr(self.ml_model, 'n_features_in_') else None
+            }
+            
+            metadata_path = model_dir / f"model_metadata_{self.current_model_name}.json"
+            with open(metadata_path, 'w') as f:
+                json.dump(metadata, f, indent=2, default=str)
+            
+            self.logger.info(f"Model saved successfully to {model_path}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Failed to save model: {e}")
+            return False
+    
+    async def _load_model(self) -> bool:
+        """Load a previously saved ML model and related data."""
+        try:
+            if not self.model_persistence_config['enabled']:
+                return False
+            
+            model_dir = Path(self.model_persistence_config['model_dir'])
+            
+            # Try to load the model
+            model_path = model_dir / f"ml_model_{self.current_model_name}.joblib"
+            if not model_path.exists():
+                self.logger.info(f"No saved model found at {model_path}")
+                return False
+            
+            # Load the ML model
+            self.ml_model = joblib.load(model_path)
+            
+            # Load the feature scaler
+            scaler_path = model_dir / f"feature_scaler_{self.current_model_name}.joblib"
+            if scaler_path.exists():
+                self.feature_scaler = joblib.load(scaler_path)
+                self._is_scaler_fitted = True
+            
+            # Load model metadata
+            metadata_path = model_dir / f"model_metadata_{self.current_model_name}.json"
+            if metadata_path.exists():
+                with open(metadata_path, 'r') as f:
+                    metadata = json.load(f)
+                
+                self.training_history = metadata.get('training_history', [])
+                self.model_performance = metadata.get('model_performance', {})
+                self._is_trained = metadata.get('is_trained', False)
+            
+            self.logger.info(f"Model loaded successfully from {model_path}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Failed to load model: {e}")
+            return False
+    
+    async def select_best_model(self, validation_data: List[tuple]) -> str:
+        """Select the best performing model from available models."""
+        try:
+            if not validation_data:
+                return self.current_model_name
+            
+            best_model_name = self.current_model_name
+            best_score = -float('inf')
+            
+            for model_name, model in self.ml_models.items():
+                # Extract features and labels
+                features = []
+                labels = []
+                
+                for query, chunk, score in validation_data:
+                    feature_vector = await self._extract_features(query, chunk)
+                    features.append(feature_vector)
+                    labels.append(score)
+                
+                if len(features) < 5:  # Need minimum data for validation
+                    continue
+                
+                # Scale features
+                X = np.array(features)
+                if self._is_scaler_fitted:
+                    X = self.feature_scaler.transform(X)
+                else:
+                    X = self.feature_scaler.fit_transform(X)
+                    self._is_scaler_fitted = True
+                
+                y = np.array(labels)
+                
+                # Perform cross-validation
+                cv_scores = cross_val_score(model, X, y, cv=3, scoring='r2')
+                avg_score = np.mean(cv_scores)
+                
+                if avg_score > best_score:
+                    best_score = avg_score
+                    best_model_name = model_name
+            
+            # Update current model if a better one is found
+            if best_model_name != self.current_model_name:
+                self.current_model_name = best_model_name
+                self.ml_model = self.ml_models[best_model_name]
+                self.logger.info(f"Selected {best_model_name} as best model (CV score: {best_score:.3f})")
+            
+            return best_model_name
+            
+        except Exception as e:
+            self.logger.error(f"Failed to select best model: {e}")
+            return self.current_model_name
+    
+    async def retrain_model(self, new_data: List[tuple], retrain_frequency: int = 100) -> bool:
+        """Retrain the model with new data if enough samples are available."""
+        try:
+            # Check if we have enough new data
+            if len(new_data) < retrain_frequency:
+                return False
+            
+            # Extract query-chunk pairs and scores
+            query_chunk_pairs = [(query, chunk) for query, chunk, score in new_data]
+            relevance_scores = [score for query, chunk, score in new_data]
+            
+            # Retrain the model
+            training_result = await self.train_on_feedback(
+                query_chunk_pairs,
+                relevance_scores,
+                enable_cross_validation=True,
+                enable_hyperparameter_optimization=True
+            )
+            
+            if training_result.get('success', False):
+                self.logger.info(f"Model retrained successfully on {len(new_data)} new samples")
+                return True
+            else:
+                self.logger.warning(f"Model retraining failed: {training_result.get('error', 'Unknown error')}")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"Failed to retrain model: {e}")
+            return False
+    
+    async def get_model_info(self) -> Dict[str, Any]:
+        """Get comprehensive information about the current ML model."""
+        try:
+            info = {
+                'model_name': self.current_model_name,
+                'is_trained': self._is_trained,
+                'is_scaler_fitted': self._is_scaler_fitted,
+                'model_type': type(self.ml_model).__name__,
+                'feature_dimensions': getattr(self.ml_model, 'n_features_in_', None),
+                'training_samples': len(self.training_history),
+                'last_training': self.training_history[-1]['timestamp'] if self.training_history else None,
+                'model_persistence': {
+                    'enabled': self.model_persistence_config['enabled'],
+                    'model_dir': self.model_persistence_config['model_dir'],
+                    'auto_save': self.model_persistence_config['auto_save']
+                },
+                'training_config': self.training_config,
+                'available_models': list(self.ml_models.keys())
+            }
+            
+            # Add performance metrics if available
+            if self.training_history:
+                latest_training = self.training_history[-1]
+                if latest_training.get('success', False):
+                    info['latest_performance'] = latest_training.get('validation_metrics', {})
+                    info['cross_validation_scores'] = latest_training.get('cross_validation_scores', {})
+            
+            return info
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get model info: {e}")
+            return {'error': str(e)}
+    
+    async def _get_query_embedding(self, query: str) -> Optional[np.ndarray]:
+        """Get embedding for a query string."""
+        try:
+            if not self.embedding_model:
+                return None
+            
+            # Get embedding from the model
+            embedding = self.embedding_model.encode([query])
+            return embedding[0] if embedding is not None else None
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to get query embedding: {e}")
+            return None
