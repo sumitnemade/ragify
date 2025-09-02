@@ -8,7 +8,7 @@ import hmac
 import secrets
 import time
 import base64
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Union, Tuple
 import json
@@ -492,21 +492,65 @@ class SecurityManager:
             raise
     
     async def hash_password(self, password: str) -> str:
-        """Hash a password using bcrypt."""
+        """Hash a password using bcrypt with enhanced security."""
         try:
-            salt = bcrypt.gensalt()
+            # Input validation
+            if password is None:
+                raise SecurityViolationError("password_hashing", "validation", "Password cannot be None")
+            
+            if not isinstance(password, str):
+                raise SecurityViolationError("password_hashing", "validation", f"Password must be string, got {type(password)}")
+            
+            # Generate salt with appropriate cost factor
+            salt = bcrypt.gensalt(rounds=12)  # Higher cost for better security
             hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
+            
+            # Log successful password hash
+            await self.log_security_event(
+                user_id="system",
+                event_type="password_hashed",
+                details="Password hashed successfully with bcrypt"
+            )
+            
             return hashed.decode('utf-8')
+            
         except Exception as e:
             self.logger.error(f"Failed to hash password: {e}")
+            if isinstance(e, SecurityViolationError):
+                raise
             raise SecurityViolationError("password_hashing", "bcrypt", str(e))
     
     async def verify_password(self, password: str, hashed_password: str) -> bool:
-        """Verify a password against its hash."""
+        """Verify a password against its hash with enhanced security."""
         try:
-            return bcrypt.checkpw(password.encode('utf-8'), hashed_password.encode('utf-8'))
+            # Input validation
+            if password is None:
+                self.logger.warning("Password verification attempted with None password")
+                return False
+            
+            if not isinstance(password, str):
+                self.logger.warning(f"Password verification attempted with invalid type: {type(password)}")
+                return False
+            
+            if hashed_password is None or not isinstance(hashed_password, str):
+                self.logger.warning("Invalid hash provided for password verification")
+                return False
+            
+            # Use constant-time comparison to prevent timing attacks
+            result = bcrypt.checkpw(password.encode('utf-8'), hashed_password.encode('utf-8'))
+            
+            # Log verification attempt
+            await self.log_security_event(
+                user_id="system",
+                event_type="password_verified",
+                details=f"Password verification {'successful' if result else 'failed'}"
+            )
+            
+            return result
+            
         except Exception as e:
             self.logger.error(f"Failed to verify password: {e}")
+            # Return False on any error to prevent information leakage
             return False
     
     async def generate_access_token(self, user_id: str, role: str, permissions: List[str]) -> str:
@@ -611,7 +655,7 @@ class SecurityManager:
         """Log an access event."""
         try:
             event = {
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': datetime.now(timezone.utc).isoformat(),
                 'user_id': user_id,
                 'resource': resource,
                 'action': action,
@@ -644,7 +688,7 @@ class SecurityManager:
         """Log a security event."""
         try:
             event = {
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': datetime.now(timezone.utc).isoformat(),
                 'user_id': user_id,
                 'event_type': event_type,
                 'details': details,
